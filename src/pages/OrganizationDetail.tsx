@@ -616,6 +616,7 @@ function OrgMembers({
   isAdmin: boolean
 }) {
   const [members, setMembers] = useState<(OrganizationMember & { profiles?: { display_name: string | null; avatar_url: string | null } })[]>([])
+  const [searchQuery, setSearchQuery] = useState('')
   const [addUserId, setAddUserId] = useState('')
   const [adding, setAdding] = useState(false)
   const [error, setError] = useState('')
@@ -628,6 +629,14 @@ function OrgMembers({
       .then(({ data }) => setMembers(((data ?? []) as unknown) as (OrganizationMember & { profiles?: { display_name: string | null; avatar_url: string | null } })[]))
   }, [orgId])
   useEffect(() => { fetch() }, [fetch])
+
+  const filteredMembers = members.filter((m) => {
+    const profile = m.profiles as { display_name: string | null; avatar_url: string | null } | undefined
+    const name = (profile?.display_name || 'Unnamed').toLowerCase()
+    const q = searchQuery.trim().toLowerCase()
+    if (!q) return true
+    return name.includes(q) || m.user_id.toLowerCase().includes(q)
+  })
 
   const handleAdd = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -678,24 +687,49 @@ function OrgMembers({
           {error && <p className="w-full text-sm text-red-400">{error}</p>}
         </form>
       )}
+
+      <div className="flex items-center gap-3">
+        <label htmlFor="members-search" className="sr-only">
+          Search members
+        </label>
+        <input
+          id="members-search"
+          type="search"
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          placeholder="Search by name or user ID…"
+          className="w-full max-w-sm rounded-lg border border-slate-600 bg-slate-800 px-3 py-2 text-sm text-white placeholder-slate-500 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500"
+        />
+        {searchQuery.trim() && (
+          <span className="text-sm text-slate-500">
+            {filteredMembers.length} of {members.length} members
+          </span>
+        )}
+      </div>
+
       <ul className="space-y-2">
-        {members.map((m) => {
+        {filteredMembers.map((m) => {
           const profile = m.profiles as { display_name: string | null; avatar_url: string | null } | undefined
+          const displayName = profile?.display_name || 'Unnamed'
           return (
             <li
               key={m.user_id}
               className="flex items-center justify-between rounded-lg border border-slate-700 bg-slate-800/50 px-4 py-3"
             >
-              <div className="flex items-center gap-3">
+              <div className="flex items-center gap-4">
                 {profile?.avatar_url ? (
-                  <img src={profile.avatar_url} alt="" className="h-8 w-8 rounded-full object-cover" />
+                  <img
+                    src={profile.avatar_url}
+                    alt=""
+                    className="h-12 w-12 rounded-full object-cover ring-2 ring-slate-600"
+                  />
                 ) : (
-                  <div className="h-8 w-8 rounded-full bg-slate-600 flex items-center justify-center text-xs text-slate-300">
-                    {(profile?.display_name || m.user_id).slice(0, 2).toUpperCase()}
+                  <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-slate-600 text-base font-medium text-slate-300">
+                    {displayName.slice(0, 2).toUpperCase()}
                   </div>
                 )}
                 <div>
-                  <p className="font-medium text-slate-200">{profile?.display_name || 'Unnamed'}</p>
+                  <p className="font-medium text-white">{displayName}</p>
                   <p className="text-xs text-slate-500 capitalize">{m.role}</p>
                 </div>
               </div>
@@ -712,6 +746,11 @@ function OrgMembers({
           )
         })}
       </ul>
+      {filteredMembers.length === 0 && (
+        <p className="rounded-lg border border-slate-700 bg-slate-800/50 px-4 py-6 text-center text-slate-500">
+          {members.length === 0 ? 'No members yet.' : 'No members match your search.'}
+        </p>
+      )}
     </div>
   )
 }

@@ -5,6 +5,9 @@ import { useAuth } from '@/context/AuthContext'
 import type { PurchaseGrant } from '@/lib/types'
 import { CATEGORY_LABELS, LISTING_TYPES, type Category } from '@/lib/constants'
 
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || ''
+const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || ''
+
 export default function MyPurchases() {
   const { user } = useAuth()
   const [grants, setGrants] = useState<(PurchaseGrant & { listings?: { title: string; listing_type: string; category: Category } })[]>([])
@@ -26,15 +29,65 @@ export default function MyPurchases() {
 
   const getDownloadUrl = async (grantId: string) => {
     setDownloadError('')
-    const { data, error } = await supabase.functions.invoke('generate-download-url', {
-      body: { grantId },
-    })
-    if (error) {
-      setDownloadError('Download link could not be generated. Ensure the Edge Function is deployed.')
+    const { data: { session: initialSession } } = await supabase.auth.getSession()
+    if (!initialSession?.access_token) {
+      setDownloadError('Please sign in and try again.')
       return
     }
-    if (data?.url) window.open(data.url, '_blank')
-    else setDownloadError('Download link could not be generated.')
+    let token = initialSession.access_token
+    try {
+      const { data: { session } } = await supabase.auth.refreshSession({
+        refresh_token: initialSession.refresh_token,
+      })
+      if (session?.access_token) token = session.access_token
+    } catch {
+      // use initial token
+    }
+    if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
+      setDownloadError('Supabase URL or anon key is missing. Check your .env.')
+      return
+    }
+    const url = `${SUPABASE_URL}/functions/v1/generate-download-url`
+    let res: Response
+    try {
+      res = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+          apikey: SUPABASE_ANON_KEY,
+        },
+        body: JSON.stringify({ grantId }),
+      })
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Network error'
+      setDownloadError(
+        `Could not reach the download service (${msg}). Check your connection and that the Edge Function is deployed for this project.`
+      )
+      return
+    }
+    const text = await res.text()
+    let body: { url?: string; error?: string } = {}
+    try {
+      body = text ? (JSON.parse(text) as { url?: string; error?: string }) : {}
+    } catch {
+      // non-JSON response (e.g. HTML error page)
+    }
+    if (res.ok && body.url) {
+      window.open(body.url, '_blank')
+      return
+    }
+    const msg =
+      typeof body.error === 'string'
+        ? body.error
+        : res.status === 401
+          ? 'Sign-in expired or invalid. Sign out and sign back in, then try again.'
+          : res.status === 404
+            ? 'Download not found or not available for this purchase.'
+            : res.status >= 500
+              ? 'Download service error. Try again later or check Edge Function logs.'
+              : `Download failed (${res.status}). ${body.error || res.statusText || ''}`.trim()
+    setDownloadError(msg || 'Download link could not be generated.')
   }
 
   if (loading) {

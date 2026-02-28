@@ -70,6 +70,22 @@ Copy `.env.example` to `.env` and set:
 
 3. Deploy Edge Functions and register the webhook URL (e.g. `https://<project>.supabase.co/functions/v1/stripe-webhook`) in Stripe for events: `checkout.session.completed`, `account.updated`.
 
+### 5b. Deploy Edge Functions (required for downloads)
+
+Purchased file downloads use the `generate-download-url` Edge Function. Deploy it (and any other functions) from the project root:
+
+```bash
+npx supabase login
+npx supabase link --project-ref <your-project-ref>
+npx supabase functions deploy generate-download-url
+```
+
+Set the function secret (Dashboard → Edge Functions → generate-download-url → Secrets, or CLI):
+
+- `SUPABASE_SERVICE_ROLE_KEY` – from Project Settings → API → service_role (required for `generate-download-url` to access storage and DB)
+
+Without this function deployed, the “Download” button on My Purchases will show: *Download link could not be generated. Ensure the Edge Function is deployed.*
+
 ### 6. Run the app
 
 ```bash

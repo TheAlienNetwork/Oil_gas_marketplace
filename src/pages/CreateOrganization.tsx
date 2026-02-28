@@ -35,22 +35,17 @@ export default function CreateOrganization() {
       setSubmitting(false)
       return
     }
-    const { data, error: err } = await supabase
-      .from('organizations')
-      .insert({
-        name: name.trim(),
-        slug: finalSlug,
-        description: description.trim() || null,
-        owner_id: user.id,
-      })
-      .select('id')
-      .single()
+    const { data: orgId, error: err } = await supabase.rpc('create_organization', {
+      p_name: name.trim(),
+      p_slug: finalSlug,
+      p_description: description.trim() || null,
+    })
     if (err) {
       setError(err.message.includes('unique') ? 'That slug is already taken.' : err.message)
       setSubmitting(false)
       return
     }
-    navigate(`/organizations/${data.id}`, { replace: true })
+    navigate(`/organizations/${orgId}`, { replace: true })
     setSubmitting(false)
   }
 
