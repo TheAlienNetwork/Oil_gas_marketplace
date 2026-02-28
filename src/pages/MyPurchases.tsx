@@ -66,12 +66,15 @@ export default function MyPurchases() {
       )
       return
     }
-    const text = await res.text()
     let body: { url?: string; error?: string } = {}
     try {
+      const text = await res.text()
       body = text ? (JSON.parse(text) as { url?: string; error?: string }) : {}
     } catch {
-      // non-JSON response (e.g. HTML error page)
+      setDownloadError(
+        'Download service returned an invalid response. Please try again or check your connection.'
+      )
+      return
     }
     if (res.ok && body.url) {
       window.open(body.url, '_blank')
