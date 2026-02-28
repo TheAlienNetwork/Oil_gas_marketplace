@@ -9,8 +9,8 @@ import './index.css'
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <MantineProvider
+      defaultColorScheme="dark"
       theme={{
-        colorScheme: 'dark',
         primaryColor: 'teal',
         colors: {
           dark: [

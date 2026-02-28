@@ -64,7 +64,7 @@ export default function ListingDetail() {
       .select('id, user_id, rating, body, created_at, profiles(display_name)')
       .eq('listing_id', id)
       .order('created_at', { ascending: false })
-      .then(({ data }) => setReviews((data as typeof reviews) ?? []))
+      .then(({ data }) => setReviews(((data ?? []) as unknown) as { id: string; user_id: string; rating: number; body: string | null; created_at: string; profiles?: { display_name: string | null } }[]))
   }, [id])
 
   useEffect(() => {
@@ -193,7 +193,7 @@ export default function ListingDetail() {
       .select('id, user_id, rating, body, created_at, profiles(display_name)')
       .eq('listing_id', id)
       .order('created_at', { ascending: false })
-    setReviews((data as typeof reviews) ?? [])
+    setReviews(((data ?? []) as unknown) as { id: string; user_id: string; rating: number; body: string | null; created_at: string; profiles?: { display_name: string | null } }[])
   }
 
   const handleMessageSeller = async () => {

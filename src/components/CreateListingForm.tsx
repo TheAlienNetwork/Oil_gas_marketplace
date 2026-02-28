@@ -4,7 +4,6 @@ import { useAuth } from '@/context/AuthContext'
 import {
   CATEGORIES,
   CATEGORY_LABELS,
-  LISTING_TYPES,
   STORAGE_BUCKETS,
   type Category,
   type ListingType,

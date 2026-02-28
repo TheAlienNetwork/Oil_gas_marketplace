@@ -61,7 +61,7 @@ export default function Feed() {
       .order('created_at', { ascending: false })
     const byUser = new Map<string, Story[]>()
     ;(data || []).forEach((s: Record<string, unknown>) => {
-      const story = s as Story
+      const story = (s as unknown) as Story
       const list = byUser.get(story.user_id) || []
       list.push(story)
       byUser.set(story.user_id, list)
@@ -148,8 +148,10 @@ export default function Feed() {
       .eq('active', true)
       .order('created_at', { ascending: false })
       .limit(10)
-      .then(({ data }) => setFeaturedAds((data as FeaturedAd[]) || []))
-      .catch(() => setFeaturedAds([]))
+      .then(
+      ({ data }) => { setFeaturedAds((data as FeaturedAd[]) || []); },
+      () => { setFeaturedAds([]); }
+    )
   }, [])
 
   const handleCreatePost = async (e: React.FormEvent) => {
@@ -559,7 +561,7 @@ function PostCard({
       .eq('post_id', post.id)
       .order('created_at', { ascending: true })
       .then(({ data }) => {
-        setComments((data as typeof comments) || [])
+        setComments(((data ?? []) as unknown) as (PostComment & { profiles?: { display_name: string | null; avatar_url: string | null } })[])
         setCommentsLoading(false)
       })
   }, [expanded, post.id, commentsVersion])

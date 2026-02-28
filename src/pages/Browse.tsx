@@ -1,5 +1,4 @@
 import { useState, useEffect } from 'react'
-import { Link } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
 import type { Listing } from '@/lib/types'
 import { CATEGORY_LABELS, type Category } from '@/lib/constants'

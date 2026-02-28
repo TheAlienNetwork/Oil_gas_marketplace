@@ -29,7 +29,7 @@ export default function Messages() {
       .order('updated_at', { ascending: false })
       .then(({ data, error: err }) => {
         if (err) setError(err.message)
-        setRows((data as ConversationRow[]) ?? [])
+        setRows(((data ?? []) as unknown) as ConversationRow[])
         setLoading(false)
       })
   }, [user?.id])

@@ -271,7 +271,6 @@ function OrgFeed({ orgId, userId }: { orgId: string; userId: string }) {
                 {expanded.has(post.id) && (
                   <OrgPostComments
                     postId={post.id}
-                    userId={userId}
                     commentBody={commentBodies[post.id] ?? ''}
                     onCommentBodyChange={(v) => setCommentBodies((prev) => ({ ...prev, [post.id]: v }))}
                     onAddComment={() => handleComment(post.id)}
@@ -288,13 +287,11 @@ function OrgFeed({ orgId, userId }: { orgId: string; userId: string }) {
 
 function OrgPostComments({
   postId,
-  userId,
   commentBody,
   onCommentBodyChange,
   onAddComment,
 }: {
   postId: string
-  userId: string
   commentBody: string
   onCommentBodyChange: (v: string) => void
   onAddComment: () => void
@@ -303,10 +300,10 @@ function OrgPostComments({
   useEffect(() => {
     supabase
       .from('organization_post_comments')
-      .select('id, body, created_at, user_id, profiles(display_name)')
+      .select('id, post_id, body, created_at, user_id, profiles(display_name)')
       .eq('post_id', postId)
       .order('created_at', { ascending: true })
-      .then(({ data }) => setComments((data as typeof comments) ?? []))
+      .then(({ data }) => setComments(((data ?? []) as unknown) as (OrganizationPostComment & { profiles?: { display_name: string | null } })[]))
   }, [postId])
   const timeAgo = (date: string) => {
     const d = new Date(date)
@@ -449,7 +446,7 @@ function OrgFiles({ orgId, userId }: { orgId: string; userId: string }) {
       .select('id, org_id, file_name, storage_path, file_size, mime_type, uploaded_by, created_at, profiles(display_name)')
       .eq('org_id', orgId)
       .order('created_at', { ascending: false })
-      .then(({ data }) => setFiles((data as OrganizationFile[]) ?? []))
+      .then(({ data }) => setFiles(((data ?? []) as unknown) as OrganizationFile[]))
   }, [orgId])
   useEffect(() => { fetch() }, [fetch])
 

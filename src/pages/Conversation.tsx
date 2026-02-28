@@ -43,7 +43,7 @@ export default function Conversation() {
       .single()
       .then(({ data, error: err }) => {
         if (err) setError(err.message)
-        setConversation((data as ConversationRow) ?? null)
+        setConversation(((data ?? null) as unknown) as ConversationRow | null)
         setLoading(false)
       })
   }, [conversationId, user?.id])
