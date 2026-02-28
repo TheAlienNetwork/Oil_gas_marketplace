@@ -11,8 +11,7 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: 'autoUpdate',
-      // Do not include the large logo in precache (Workbox 2 MiB limit)
-      includeAssets: [],
+      includeAssets: ['The_Patch_Logo.png'],
       manifest: {
         name: 'The Patch',
         short_name: 'The Patch',
@@ -57,8 +56,8 @@ export default defineConfig({
         ],
       },
       workbox: {
+        maximumFileSizeToCacheInBytes: 4 * 1024 * 1024,
         globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
-        globIgnores: ['**/The_Patch_Logo.png'],
         runtimeCaching: [
           {
             urlPattern: /^https:\/\/fonts\.(?:gstatic|googleapis)\.com\/.*/i,
