@@ -550,7 +550,7 @@ function OrgMessages({ orgId, userId }: { orgId: string; userId: string }) {
       .select('id, org_id, sender_id, body, created_at, profiles(display_name)')
       .eq('org_id', orgId)
       .order('created_at', { ascending: true })
-      .then(({ data }) => setMessages((data as typeof messages) ?? []))
+      .then(({ data }) => setMessages(((data ?? []) as unknown) as (OrganizationMessage & { profiles?: { display_name: string | null } })[]))
   }, [orgId])
   useEffect(() => { fetch() }, [fetch])
 
@@ -628,7 +628,7 @@ function OrgMembers({
       .from('organization_members')
       .select('org_id, user_id, role, joined_at, profiles(display_name, avatar_url)')
       .eq('org_id', orgId)
-      .then(({ data }) => setMembers((data as typeof members) ?? []))
+      .then(({ data }) => setMembers(((data ?? []) as unknown) as (OrganizationMember & { profiles?: { display_name: string | null; avatar_url: string | null } })[]))
   }, [orgId])
   useEffect(() => { fetch() }, [fetch])
 
