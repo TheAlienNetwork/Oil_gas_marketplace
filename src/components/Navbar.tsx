@@ -57,7 +57,7 @@ export default function Navbar() {
           </Link>
         </div>
 
-        <div className="flex items-center gap-2 sm:gap-3">
+        <div className="flex shrink-0 items-center gap-2 sm:gap-3">
           {user ? (
             <>
               <Link
@@ -85,7 +85,25 @@ export default function Navbar() {
                 Orgs
               </Link>
 
-              <div className="relative" ref={dropdownRef}>
+              {/* Mobile: avatar links straight to profile. Desktop: avatar opens dropdown */}
+              <Link
+                to="/profile"
+                className="sm:hidden flex items-center rounded-full p-0.5 ring-2 ring-transparent transition hover:ring-slate-600 focus:outline-none focus:ring-2 focus:ring-primary-500"
+                aria-label="Go to profile"
+              >
+                {profile?.avatar_url ? (
+                  <img
+                    src={profile.avatar_url}
+                    alt=""
+                    className="h-9 w-9 rounded-full object-cover"
+                  />
+                ) : (
+                  <div className="flex h-9 w-9 items-center justify-center rounded-full bg-slate-600 text-sm font-semibold text-slate-300">
+                    {(profile?.display_name || user.email || '?').slice(0, 1).toUpperCase()}
+                  </div>
+                )}
+              </Link>
+              <div className="relative hidden sm:block" ref={dropdownRef}>
                 <button
                   type="button"
                   onClick={() => setProfileOpen((o) => !o)}

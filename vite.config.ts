@@ -11,7 +11,7 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: 'autoUpdate',
-      includeAssets: ['vite.svg'],
+      includeAssets: ['The_Patch_Logo.png'],
       manifest: {
         name: 'The Patch',
         short_name: 'The Patch',
@@ -24,15 +24,33 @@ export default defineConfig({
         start_url: '/',
         icons: [
           {
-            src: '/vite.svg',
-            sizes: 'any',
-            type: 'image/svg+xml',
+            src: '/The_Patch_Logo.png',
+            sizes: '180x180',
+            type: 'image/png',
             purpose: 'any',
           },
           {
-            src: '/vite.svg',
-            sizes: 'any',
-            type: 'image/svg+xml',
+            src: '/The_Patch_Logo.png',
+            sizes: '192x192',
+            type: 'image/png',
+            purpose: 'any',
+          },
+          {
+            src: '/The_Patch_Logo.png',
+            sizes: '512x512',
+            type: 'image/png',
+            purpose: 'any',
+          },
+          {
+            src: '/The_Patch_Logo.png',
+            sizes: '192x192',
+            type: 'image/png',
+            purpose: 'maskable',
+          },
+          {
+            src: '/The_Patch_Logo.png',
+            sizes: '512x512',
+            type: 'image/png',
             purpose: 'maskable',
           },
         ],

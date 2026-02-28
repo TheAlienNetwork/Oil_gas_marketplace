@@ -249,7 +249,6 @@ function RigFeed({ rigId, userId }: { rigId: string; userId: string }) {
                 {expanded.has(post.id) && (
                   <RigPostComments
                     postId={post.id}
-                    userId={userId}
                     commentBody={commentBodies[post.id] ?? ''}
                     onCommentBodyChange={(v) => setCommentBodies((prev) => ({ ...prev, [post.id]: v }))}
                     onAddComment={() => handleComment(post.id)}
@@ -266,13 +265,11 @@ function RigFeed({ rigId, userId }: { rigId: string; userId: string }) {
 
 function RigPostComments({
   postId,
-  userId,
   commentBody,
   onCommentBodyChange,
   onAddComment,
 }: {
   postId: string
-  userId: string
   commentBody: string
   onCommentBodyChange: (v: string) => void
   onAddComment: () => void
@@ -281,10 +278,10 @@ function RigPostComments({
   useEffect(() => {
     supabase
       .from('rig_post_comments')
-      .select('id, body, created_at, user_id, profiles(display_name)')
+      .select('id, post_id, body, created_at, user_id, profiles(display_name)')
       .eq('post_id', postId)
       .order('created_at', { ascending: true })
-      .then(({ data }) => setComments((data as typeof comments) ?? []))
+      .then(({ data }) => setComments(((data ?? []) as unknown) as (RigPostComment & { profiles?: { display_name: string | null } })[]))
   }, [postId])
   const timeAgo = (date: string) => {
     const d = new Date(date)
@@ -336,7 +333,7 @@ function RigMessages({ rigId, userId }: { rigId: string; userId: string }) {
       .select('id, rig_id, sender_id, body, created_at, profiles(display_name)')
       .eq('rig_id', rigId)
       .order('created_at', { ascending: true })
-      .then(({ data }) => setMessages((data as typeof messages) ?? []))
+      .then(({ data }) => setMessages(((data ?? []) as unknown) as (RigMessage & { profiles?: { display_name: string | null } })[]))
   }, [rigId])
   useEffect(() => {
     fetch()
