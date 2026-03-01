@@ -84,17 +84,22 @@ export default function ProfilePage() {
       supabase.from('profile_projects').select('*').eq('user_id', profileId).order('created_at', { ascending: false }),
       supabase.from('posts').select('id, user_id, content, image_url, video_url, created_at').eq('user_id', profileId).order('created_at', { ascending: false }).limit(20),
     ]).then(([p, w, pr, po]) => {
-      if (p.data) setProfile(p.data as Profile)
+      if (p.data) {
+        setProfile(p.data as Profile)
+        setDisplayName((p.data as Profile).display_name || '')
+        setHeadline((p.data as Profile).headline || '')
+        setBio((p.data as Profile).bio || '')
+        setLocation((p.data as Profile).location || '')
+        setOpenToWork((p.data as Profile).open_to_work ?? false)
+      }
       if (w.data) setWork(w.data as WorkExperience[])
+      else setWork([])
       if (pr.data) setProjects(pr.data as ProfileProject[])
+      else setProjects([])
       if (po.data) setPosts(po.data as Post[])
-      setDisplayName((p.data as Profile)?.display_name || '')
-      setHeadline((p.data as Profile)?.headline || '')
-      setBio((p.data as Profile)?.bio || '')
-      setLocation((p.data as Profile)?.location || '')
-      setOpenToWork((p.data as Profile)?.open_to_work ?? false)
+      else setPosts([])
       setLoading(false)
-    })
+    }).catch(() => setLoading(false))
   }, [profileId])
 
   useEffect(() => {

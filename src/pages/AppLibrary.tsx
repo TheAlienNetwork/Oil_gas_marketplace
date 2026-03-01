@@ -5,9 +5,6 @@ import { useAuth } from '@/context/AuthContext'
 import type { PurchaseGrant } from '@/lib/types'
 import { CATEGORY_LABELS, LISTING_TYPES, type Category } from '@/lib/constants'
 
-const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || ''
-const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || ''
-
 type GrantWithListing = PurchaseGrant & {
   listings?: { title: string; listing_type: string; category: Category; thumbnail_url?: string | null }
 }
@@ -47,26 +44,16 @@ export default function AppLibrary() {
     } catch {
       // use initial token
     }
-    if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
-      setDownloadError('Supabase URL or anon key is missing.')
-      return
-    }
-    const url = `${SUPABASE_URL}/functions/v1/generate-download-url`
+    const apiUrl = '/api/generate-download-url'
     let res: Response
     try {
-      res = await fetch(url, {
+      res = await fetch(apiUrl, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-          apikey: SUPABASE_ANON_KEY,
-        },
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify({ grantId, access_token: token }),
       })
     } catch (err) {
-      setDownloadError(
-        `Could not reach the download service. Check your connection.`
-      )
+      setDownloadError('Could not reach the download service. Try again.')
       return
     }
     let body: { url?: string; error?: string } = {}

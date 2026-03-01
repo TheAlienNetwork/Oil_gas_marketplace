@@ -100,6 +100,31 @@ Open [http://localhost:5173](http://localhost:5173).
 - `supabase/migrations/` – Postgres schema and RLS
 - `supabase/functions/` – Edge Functions: create-checkout, stripe-webhook, generate-download-url, stripe-connect-onboard
 
+## Troubleshooting (Vercel & Supabase)
+
+### Manifest / PWA: 401 on `manifest.webmanifest`
+
+If the browser reports *Manifest fetch failed, code 401*, Vercel is likely blocking unauthenticated requests:
+
+1. Open **Vercel** → your project → **Settings** → **Deployment Protection**.
+2. For **Production** (and Preview if you want PWA to work on preview URLs), either disable protection or set it so that the deployment is **public**.  
+   (Preview deployments are often “Protected” by default, which returns 401 for the manifest and breaks PWA install.)
+
+### Profile: 404 on `work_experience` or `profile_projects`
+
+If the profile page shows empty Experience/Projects and the console shows 404 for those tables, the schema is missing:
+
+1. Run **all** Supabase migrations in order (including `20260228004629_profile_extended.sql`, which creates `work_experience` and `profile_projects`).
+2. In the Dashboard: **SQL Editor** → run each migration file, or use `npx supabase db push` if the project is linked.
+
+### Download: 401 or could not reach download service
+
+If “Download” still returns 401 after signing in:
+
+1. In **Vercel** → project → **Settings** → **Environment Variables**, add `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` (the **service_role** JWT from Supabase → Project Settings → API).
+2. Redeploy so env vars apply.
+3. For local dev, run `vercel dev` so `/api` is available.
+
 ## License
 
 Private / use as needed.

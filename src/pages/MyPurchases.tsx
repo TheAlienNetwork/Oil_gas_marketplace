@@ -5,9 +5,6 @@ import { useAuth } from '@/context/AuthContext'
 import type { PurchaseGrant } from '@/lib/types'
 import { CATEGORY_LABELS, LISTING_TYPES, type Category } from '@/lib/constants'
 
-const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || ''
-const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || ''
-
 export default function MyPurchases() {
   const { user } = useAuth()
   const [grants, setGrants] = useState<(PurchaseGrant & { listings?: { title: string; listing_type: string; category: Category } })[]>([])
@@ -43,27 +40,17 @@ export default function MyPurchases() {
     } catch {
       // use initial token
     }
-    if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
-      setDownloadError('Supabase URL or anon key is missing. Check your .env.')
-      return
-    }
-    const url = `${SUPABASE_URL}/functions/v1/generate-download-url`
+    const apiUrl = '/api/generate-download-url'
     let res: Response
     try {
-      res = await fetch(url, {
+      res = await fetch(apiUrl, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-          apikey: SUPABASE_ANON_KEY,
-        },
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify({ grantId, access_token: token }),
       })
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Network error'
-      setDownloadError(
-        `Could not reach the download service (${msg}). Check your connection and that the Edge Function is deployed for this project.`
-      )
+      setDownloadError(`Could not reach the download service (${msg}). Try again.`)
       return
     }
     let body: { url?: string; error?: string } = {}
