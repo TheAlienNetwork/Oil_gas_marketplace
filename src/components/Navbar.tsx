@@ -61,6 +61,12 @@ export default function Navbar() {
           {user ? (
             <>
               <Link
+                to="/apps"
+                className="hidden rounded-lg px-3 py-2 text-sm text-slate-400 transition-colors hover:bg-slate-800 hover:text-white sm:inline"
+              >
+                My Apps
+              </Link>
+              <Link
                 to="/purchases"
                 className="hidden rounded-lg px-3 py-2 text-sm text-slate-400 transition-colors hover:bg-slate-800 hover:text-white sm:inline"
               >

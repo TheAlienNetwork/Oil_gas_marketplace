@@ -7,6 +7,7 @@ import SignIn from '@/pages/SignIn'
 import SignUp from '@/pages/SignUp'
 import SellerDashboard from '@/pages/SellerDashboard'
 import MyPurchases from '@/pages/MyPurchases'
+import AppLibrary from '@/pages/AppLibrary'
 import AppPlayer from '@/pages/AppPlayer'
 import Messages from '@/pages/Messages'
 import Conversation from '@/pages/Conversation'
@@ -91,6 +92,14 @@ export default function App() {
           element={
             <ProtectedRoute>
               <MyPurchases />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="apps"
+          element={
+            <ProtectedRoute>
+              <AppLibrary />
             </ProtectedRoute>
           }
         />

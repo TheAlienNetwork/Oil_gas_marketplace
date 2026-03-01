@@ -57,7 +57,7 @@ export default function MyPurchases() {
           Authorization: `Bearer ${token}`,
           apikey: SUPABASE_ANON_KEY,
         },
-        body: JSON.stringify({ grantId }),
+        body: JSON.stringify({ grantId, access_token: token }),
       })
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Network error'

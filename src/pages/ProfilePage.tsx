@@ -32,6 +32,8 @@ export default function ProfilePage() {
   const [profileViewsData, setProfileViewsData] = useState<{ day: string; views: number }[]>([])
   const [viewsLoading, setViewsLoading] = useState(false)
   const [activeTab, setActiveTab] = useState<'experience' | 'projects' | 'posts'>('experience')
+  const [experienceError, setExperienceError] = useState<string | null>(null)
+  const [addingExperience, setAddingExperience] = useState(false)
 
   const profileId = userId || user?.id
   const isOwnProfile = !!user?.id && profileId === user.id
@@ -197,29 +199,40 @@ export default function ProfilePage() {
 
   const handleAddExperience = async (e: React.FormEvent) => {
     e.preventDefault()
+    setExperienceError(null)
     if (!user?.id) return
     const form = e.target as HTMLFormElement
-    const company = (form.querySelector('[name=company]') as HTMLInputElement)?.value
-    const job_title = (form.querySelector('[name=job_title]') as HTMLInputElement)?.value
-    const loc = (form.querySelector('[name=location]') as HTMLInputElement)?.value
+    const company = (form.querySelector('[name=company]') as HTMLInputElement)?.value?.trim()
+    const job_title = (form.querySelector('[name=job_title]') as HTMLInputElement)?.value?.trim()
+    const loc = (form.querySelector('[name=location]') as HTMLInputElement)?.value?.trim() || null
     const start_date = (form.querySelector('[name=start_date]') as HTMLInputElement)?.value
     const end_date = (form.querySelector('[name=end_date]') as HTMLInputElement)?.value
     const is_current = (form.querySelector('[name=is_current]') as HTMLInputElement)?.checked
-    const description = (form.querySelector('[name=description]') as HTMLTextAreaElement)?.value
-    const { data } = await supabase
+    const description = (form.querySelector('[name=description]') as HTMLTextAreaElement)?.value?.trim() || null
+    if (!company || !job_title || !start_date) {
+      setExperienceError('Company, job title, and start date are required.')
+      return
+    }
+    setAddingExperience(true)
+    const { data, error } = await supabase
       .from('work_experience')
       .insert({
         user_id: user.id,
         company,
         job_title,
-        location: loc || null,
+        location: loc,
         start_date,
         end_date: is_current ? null : end_date || null,
         is_current: !!is_current,
-        description: description || null,
+        description,
       })
       .select()
       .single()
+    setAddingExperience(false)
+    if (error) {
+      setExperienceError(error.message || 'Failed to add experience. Try again.')
+      return
+    }
     if (data) setWork((prev) => [data as WorkExperience, ...prev])
     form.reset()
   }
@@ -394,6 +407,11 @@ export default function ProfilePage() {
           <section className="mt-6">
             {isOwnProfile && (
               <form onSubmit={handleAddExperience} className="mb-6 rounded-xl border border-slate-700 bg-slate-800/30 p-4">
+                {experienceError && (
+                  <p className="mb-3 rounded-lg bg-red-500/10 border border-red-500/30 px-3 py-2 text-sm text-red-300">
+                    {experienceError}
+                  </p>
+                )}
                 <input name="company" required placeholder="Company" className="mb-2 w-full rounded-lg border border-slate-600 bg-slate-800 px-3 py-2 text-white placeholder-slate-500" />
                 <input name="job_title" required placeholder="Job title" className="mb-2 w-full rounded-lg border border-slate-600 bg-slate-800 px-3 py-2 text-white placeholder-slate-500" />
                 <input name="location" placeholder="Location" className="mb-2 w-full rounded-lg border border-slate-600 bg-slate-800 px-3 py-2 text-white placeholder-slate-500" />
@@ -403,7 +421,9 @@ export default function ProfilePage() {
                   <label className="flex items-center gap-2 text-sm text-slate-400"><input name="is_current" type="checkbox" className="rounded" />Current</label>
                 </div>
                 <textarea name="description" placeholder="Description" rows={2} className="mt-2 w-full rounded-lg border border-slate-600 bg-slate-800 px-3 py-2 text-white placeholder-slate-500" />
-                <button type="submit" className="mt-2 rounded-lg bg-primary-600 px-4 py-2 text-sm text-white hover:bg-primary-500">Add experience</button>
+                <button type="submit" disabled={addingExperience} className="mt-2 rounded-lg bg-primary-600 px-4 py-2 text-sm text-white hover:bg-primary-500 disabled:opacity-50">
+                  {addingExperience ? 'Adding…' : 'Add experience'}
+                </button>
               </form>
             )}
             {work.length === 0 ? (

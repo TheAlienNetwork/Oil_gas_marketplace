@@ -28,15 +28,23 @@ serve(async (req) => {
     })
   }
   try {
-    const { grantId } = await req.json()
+    const body = await req.json() as { grantId?: string; access_token?: string }
+    const grantId = body?.grantId
     const authHeader = req.headers.get('Authorization')
-    if (!authHeader) {
+    const tokenFromHeader = authHeader?.replace(/^Bearer\s+/i, '')?.trim()
+    const token = tokenFromHeader || body?.access_token || ''
+    if (!token) {
       return new Response(JSON.stringify({ error: 'Unauthorized' }), {
         status: 401,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       })
     }
-    const token = authHeader.replace('Bearer ', '')
+    if (!grantId) {
+      return new Response(JSON.stringify({ error: 'Grant ID required' }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      })
+    }
     const { data: { user }, error: userError } = await supabase.auth.getUser(token)
     if (userError || !user) {
       return new Response(JSON.stringify({ error: 'Unauthorized' }), {
