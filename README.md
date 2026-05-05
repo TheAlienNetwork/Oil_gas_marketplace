@@ -59,16 +59,83 @@ Copy `.env.example` to `.env` and set:
 
 3. In Authentication → Providers, enable Email (and optionally confirm email off for dev).
 
-### 5. Stripe (for payments)
+### 5. Stripe (for payments — your account + Connect sellers)
 
-1. Enable [Stripe Connect](https://stripe.com/docs/connect) and get API keys.
-2. For Edge Functions, set secrets:
-   - `STRIPE_SECRET_KEY`
-   - `STRIPE_WEBHOOK_SECRET` (from Stripe webhook for your endpoint)
-   - `STRIPE_CONNECT_PLATFORM_FEE_PERCENT` (e.g. 15 for 15% — set to whatever cut you want)
-   - `FRONTEND_URL` (e.g. http://localhost:5173)
+Money flow: buyers pay through **Stripe Checkout**; your platform keeps **`STRIPE_CONNECT_PLATFORM_FEE_PERCENT`** of each paid sale; the rest goes to the **seller’s connected account** (minus Stripe’s own processing fees).
 
-3. Deploy Edge Functions and register the webhook URL (e.g. `https://<project>.supabase.co/functions/v1/stripe-webhook`) in Stripe for events: `checkout.session.completed`, `account.updated`.
+#### A. Your Stripe account (platform)
+
+1. Create or log in at [stripe.com](https://stripe.com).
+2. **Activate Connect (required)** — Dashboard → [**Connect**](https://dashboard.stripe.com/connect) → complete platform onboarding. Until this is done, seller onboarding will error with *“signed up for Connect”*. Express accounts match this app’s `stripe.accounts.create({ type: 'express' })`.
+3. Stay in **Test mode** until everything works; then repeat with **Live** keys for production.
+4. **Developers → API keys**: copy the **Secret key** (`sk_test_…` / `sk_live_…`). This is your platform key — never put it in frontend code.
+
+#### B. Supabase secrets for Edge Functions
+
+Set these for your Supabase project (same values apply to all functions):
+
+| Secret | Purpose |
+|--------|---------|
+| `SUPABASE_SERVICE_ROLE_KEY` | From Supabase → Project Settings → API → `service_role` |
+| `SUPABASE_URL` | Project URL (if not auto-set) |
+| `STRIPE_SECRET_KEY` | Stripe secret key |
+| `STRIPE_WEBHOOK_SECRET` | From webhook endpoint (below) |
+| `STRIPE_CONNECT_PLATFORM_FEE_PERCENT` | e.g. `10` = 10% to the platform per sale |
+| `FRONTEND_URL` | App origin, no trailing slash: `http://localhost:5173` (dev) or `https://your-domain.com` (prod). Used for Checkout **success/cancel** redirects and Connect return URLs. |
+
+Using the CLI (from project root, after `npx supabase link`):
+
+```bash
+npx supabase secrets set STRIPE_SECRET_KEY=sk_test_xxx STRIPE_WEBHOOK_SECRET=whsec_xxx STRIPE_CONNECT_PLATFORM_FEE_PERCENT=10 FRONTEND_URL=http://localhost:5173 SUPABASE_SERVICE_ROLE_KEY=your-service-role-jwt --project-ref YOUR_PROJECT_REF
+```
+
+#### C. Stripe webhook
+
+1. **Developers → Webhooks → Add endpoint** (or **Create an event destination** in newer Stripe UIs — you must **select at least one event** or **All events** before Continue enables).
+2. URL: `https://<your-project-ref>.supabase.co/functions/v1/stripe-webhook`
+3. Events (minimum): **`checkout.session.completed`**, **`account.updated`**
+4. Copy the endpoint **Signing secret** (`whsec_…`) into `STRIPE_WEBHOOK_SECRET`.
+
+**Automate (recommended on Windows):** from the repo root, set your Stripe secret key, then run the script. It can **delete** any existing endpoint with the same URL (`-ReplaceExisting`), create a fresh one, and **push** `whsec_…` to Supabase (`-SyncSupabase`).
+
+```powershell
+# Use quotes — without them PowerShell treats sk_test_... as a command name.
+$env:STRIPE_SECRET_KEY = 'sk_test_xxx'   # must match test vs live mode
+.\scripts\register-stripe-webhook.ps1 -ProjectRef your_project_ref -ReplaceExisting -SyncSupabase
+```
+
+Or: `npm run stripe:webhook` (after `STRIPE_SECRET_KEY` is set in the shell, or `STRIPE_SECRET_KEY=sk_test_...` in local `.env`).
+
+The signing secret is only shown once at creation time; use `-ReplaceExisting` if you need a new `whsec_` for Supabase.
+
+If Stripe shows **401** from Supabase, the function is rejecting requests without a user JWT. This repo sets **`verify_jwt = false`** for `stripe-webhook` in `supabase/config.toml`; redeploy after pulling that file, or disable JWT verification for that function in the Supabase Dashboard.
+
+#### D. Deploy payment-related Edge Functions
+
+```bash
+npx supabase functions deploy create-checkout
+npx supabase functions deploy stripe-connect-onboard
+npx supabase functions deploy stripe-webhook
+```
+
+`stripe-connect-onboard` accepts JSON `intent`: `onboarding` (default), `update` (bank/identity via Account Link), or `express_dashboard` (Express Dashboard login for onboarded sellers).
+
+#### E. You as a seller (optional test)
+
+1. Run the app, sign in, open **Sell** (Seller Dashboard).
+2. **Connect Stripe** — this creates *your* Express connected account as if you were any seller; complete onboarding in Test mode.
+3. Create a listing with a price & file, then buy it from another test user with [Stripe test cards](https://stripe.com/docs/testing).
+
+Your **platform** fees appear under Connect / Payments in the Stripe Dashboard; seller payouts follow Express settlement rules.
+
+#### F. Stripe MCP in Cursor (optional)
+
+If you connect the **Stripe MCP** in Cursor, tools like **retrieve balance** confirm the API key is valid. If the response shows **`livemode: true`**, that MCP key is a **live** secret — use the same mode everywhere:
+
+- Supabase **`STRIPE_SECRET_KEY`** must be **`sk_live_…`** for live traffic (and **`sk_test_…`** for test).
+- Webhooks: separate endpoints or signing secrets for test vs live if you use both.
+
+The MCP’s generic API search may not list **Connect** endpoints; your marketplace logic stays in this repo’s Edge Functions (`create-checkout`, `stripe-connect-onboard`, `stripe-webhook`). Paid checkouts include **`metadata.marketplace = the_patch`** on the PaymentIntent and product for easier filtering in the Dashboard.
 
 ### 5b. Deploy Edge Functions (required for downloads)
 
@@ -80,9 +147,16 @@ npx supabase link --project-ref <your-project-ref>
 npx supabase functions deploy generate-download-url
 ```
 
-Set the function secret (Dashboard → Edge Functions → generate-download-url → Secrets, or CLI):
+Hosted Edge Functions already receive **default secrets** (`SUPABASE_URL` plus either legacy `SUPABASE_SERVICE_ROLE_KEY` or newer `SUPABASE_SECRET_KEYS`). If downloads still fail with a configuration error:
 
-- `SUPABASE_SERVICE_ROLE_KEY` – from Project Settings → API → service_role (required for `generate-download-url` to access storage and DB)
+1. Dashboard → **Edge Functions** → **Secrets** — confirm defaults are present (or add **`SUPABASE_SERVICE_ROLE_KEY`** from **Project Settings → API → service_role**).
+2. Redeploy: `npx supabase functions deploy generate-download-url --use-api`
+
+CLI (optional):
+
+```bash
+npx supabase secrets set SUPABASE_SERVICE_ROLE_KEY=paste_service_role_here --project-ref <your-ref>
+```
 
 Without this function deployed, the “Download” button on My Purchases will show: *Download link could not be generated. Ensure the Edge Function is deployed.*
 
@@ -117,13 +191,13 @@ If the profile page shows empty Experience/Projects and the console shows 404 fo
 1. Run **all** Supabase migrations in order (including `20260228004629_profile_extended.sql`, which creates `work_experience` and `profile_projects`).
 2. In the Dashboard: **SQL Editor** → run each migration file, or use `npx supabase db push` if the project is linked.
 
-### Download: 401 or could not reach download service
+### Download: 401, CORS, or could not reach download service
 
-If “Download” still returns 401 after signing in:
+The app calls the **`generate-download-url` Edge Function** via `supabase.functions.invoke` (no `/api` route required for `npm run dev`).
 
-1. In **Vercel** → project → **Settings** → **Environment Variables**, add `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` (the **service_role** JWT from Supabase → Project Settings → API).
-2. Redeploy so env vars apply.
-3. For local dev, run `vercel dev` so `/api` is available.
+1. Deploy: `npx supabase functions deploy generate-download-url`
+2. Set the function secret **`SUPABASE_SERVICE_ROLE_KEY`** (and `SUPABASE_URL` if not inherited) for that function in the Supabase Dashboard.
+3. If you still use the optional Vercel route `api/generate-download-url.ts`, set the same env vars on Vercel and run `vercel dev` for local `/api` access — the React app no longer depends on it by default.
 
 ## License
 

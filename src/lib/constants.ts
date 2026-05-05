@@ -26,8 +26,11 @@ export const CATEGORY_LABELS: Record<Category, string> = {
   other: 'Other',
 }
 
-/** Platform takes this percentage of each paid purchase (used in create-checkout Edge Function). */
-export const PLATFORM_FEE_PERCENT = 5
+/**
+ * Shown in the UI for seller/buyer disclosure. Must match Supabase Edge Function env
+ * `STRIPE_CONNECT_PLATFORM_FEE_PERCENT` (default 10 in create-checkout if unset) — keep in sync.
+ */
+export const PLATFORM_FEE_PERCENT = 10
 
 export const STORAGE_BUCKETS = {
   listingAssets: 'listing-assets',

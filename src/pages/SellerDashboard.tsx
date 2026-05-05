@@ -3,15 +3,16 @@ import { Link } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/context/AuthContext'
 import type { Listing } from '@/lib/types'
-import { CATEGORY_LABELS, type Category } from '@/lib/constants'
+import { CATEGORY_LABELS, PLATFORM_FEE_PERCENT, type Category } from '@/lib/constants'
 import CreateListingForm from '@/components/CreateListingForm'
+import SellerStripeSetup from '@/components/SellerStripeSetup'
 
 export default function SellerDashboard() {
   const { user, profile, refreshProfile } = useAuth()
   const [listings, setListings] = useState<Listing[]>([])
   const [loading, setLoading] = useState(true)
   const [showCreate, setShowCreate] = useState(false)
-  const [tab, setTab] = useState<'listings' | 'messages'>('listings')
+  const [editingListing, setEditingListing] = useState<Listing | null>(null)
   const [deleteId, setDeleteId] = useState<string | null>(null)
   const [deleteError, setDeleteError] = useState('')
 
@@ -46,18 +47,6 @@ export default function SellerDashboard() {
       .then(({ data }) => setListings((data as Listing[]) ?? []))
   }
 
-  const handleConnectStripe = async () => {
-    try {
-      const { data } = await supabase.functions.invoke('stripe-connect-onboard', {
-        body: { userId: user?.id },
-      })
-      if (data?.url) window.location.href = data.url
-    } catch {
-      // Placeholder: show message when Edge Function not deployed
-      alert('Stripe Connect will be available after deploying the backend.')
-    }
-  }
-
   const handleDeleteListing = async (listingId: string) => {
     if (!user?.id) return
     setDeleteError('')
@@ -78,117 +67,110 @@ export default function SellerDashboard() {
   }
 
   return (
-    <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
-      <h1 className="text-2xl font-bold text-white">Seller Dashboard</h1>
+    <div className="mx-auto max-w-[1400px] px-4 py-10 sm:px-6 lg:px-10">
+      <header className="max-w-3xl">
+        <p className="text-[11px] font-semibold uppercase tracking-[0.3em] text-primary-400/90">Seller</p>
+        <h1 className="mt-2 font-display text-4xl font-normal tracking-tight text-white">Dashboard</h1>
+        <p className="mt-4 text-sm leading-relaxed text-slate-500">
+          Upload digital products (files, calculators, apps). Paid sales use Stripe Checkout; the platform
+          retains {PLATFORM_FEE_PERCENT}% per sale (configurable server-side as{' '}
+          <code className="rounded-md bg-white/[0.06] px-1.5 py-0.5 text-xs text-slate-300 ring-1 ring-white/10">
+            STRIPE_CONNECT_PLATFORM_FEE_PERCENT
+          </code>
+          ). Connect Stripe so payouts reach your account.
+        </p>
+      </header>
 
-      {profile && !profile.stripe_onboarding_complete && (
-        <div className="mt-6 rounded-xl border border-amber-800 bg-amber-900/20 p-4">
-          <p className="text-amber-200">
-            Connect your Stripe account to receive payouts from paid sales.
-          </p>
-          <button
-            type="button"
-            onClick={handleConnectStripe}
-            className="mt-3 rounded-lg bg-amber-600 px-4 py-2 text-sm font-medium text-white hover:bg-amber-500"
-          >
-            Connect Stripe
-          </button>
+      <SellerStripeSetup profile={profile} />
+
+      <div className="mt-10 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <p className="text-sm font-semibold text-white">Your listings</p>
+          <p className="text-xs text-slate-600">Manage what buyers see on the marketplace.</p>
         </div>
-      )}
-
-      <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={() => setTab('listings')}
-            className={
-              tab === 'listings'
-                ? 'rounded-lg bg-slate-700 px-3 py-1.5 text-sm font-medium text-white'
-                : 'rounded-lg bg-slate-800/50 px-3 py-1.5 text-sm text-slate-300 hover:bg-slate-700/50'
-            }
-          >
-            Listings
-          </button>
-          <button
-            type="button"
-            onClick={() => setTab('messages')}
-            className={
-              tab === 'messages'
-                ? 'rounded-lg bg-slate-700 px-3 py-1.5 text-sm font-medium text-white'
-                : 'rounded-lg bg-slate-800/50 px-3 py-1.5 text-sm text-slate-300 hover:bg-slate-700/50'
-            }
-          >
-            Messages
-          </button>
-        </div>
-
-        {tab === 'listings' && (
-          <button
-            type="button"
-            onClick={() => setShowCreate(true)}
-            className="rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-white hover:bg-primary-500"
-          >
-            Create listing
-          </button>
-        )}
+        <button
+          type="button"
+          onClick={() => {
+            setEditingListing(null)
+            setShowCreate(true)
+          }}
+          className="rounded-full bg-primary-600 px-6 py-2.5 text-sm font-semibold text-white shadow-glow transition hover:bg-primary-500"
+        >
+          New listing
+        </button>
       </div>
 
-      {showCreate && (
+      {(showCreate || editingListing) && (
         <CreateListingForm
-          onClose={() => setShowCreate(false)}
+          key={editingListing?.id ?? 'new'}
+          initialListing={editingListing}
+          onClose={() => {
+            setShowCreate(false)
+            setEditingListing(null)
+          }}
           onSuccess={() => {
             setShowCreate(false)
+            setEditingListing(null)
             refetchListings()
           }}
         />
       )}
 
-      {tab === 'messages' ? (
-        <div className="mt-6 rounded-xl border border-slate-700 bg-slate-800/50 p-8 text-center text-slate-400">
-          Messages inbox is coming next (this tab will show customer messages in a messenger-style view).
+      {loading ? (
+        <div className="mt-12 flex justify-center">
+          <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary-500/25 border-t-primary-500" />
         </div>
-      ) : loading ? (
-        <div className="mt-6 text-slate-400">Loading...</div>
       ) : (
         <>
           {deleteError && (
-            <div className="mt-6 rounded-lg bg-red-900/30 px-4 py-2 text-sm text-red-300">
+            <div className="mt-8 rounded-xl bg-red-950/40 px-4 py-3 text-sm text-red-200 ring-1 ring-red-500/20">
               {deleteError}
             </div>
           )}
           {listings.length === 0 ? (
-            <div className="mt-6 rounded-xl border border-slate-700 bg-slate-800/50 p-8 text-center text-slate-400">
-              No listings yet. Create one to start selling.
+            <div className="mt-10 rounded-2xl border border-dashed border-white/10 bg-slate-900/20 py-16 text-center">
+              <p className="font-display text-lg text-slate-400">No listings yet</p>
+              <p className="mt-2 text-sm text-slate-600">Create your first product to appear on the marketplace.</p>
             </div>
           ) : (
-            <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
               {listings.map((listing) => (
                 <div
                   key={listing.id}
-                  className="flex items-center justify-between rounded-xl border border-slate-700 bg-slate-800/50 p-4"
+                  className="flex flex-col gap-4 rounded-2xl border border-white/[0.06] bg-slate-900/25 p-5 shadow-market ring-1 ring-white/[0.03] sm:flex-row sm:items-center sm:justify-between"
                 >
-                  <div className="min-w-0">
+                  <div className="min-w-0 flex-1">
                     <Link
                       to={`/listing/${listing.id}`}
-                      className="font-medium text-white hover:underline"
+                      className="font-medium text-white transition hover:text-primary-300"
                     >
                       {listing.title}
                     </Link>
-                    <p className="text-sm text-slate-400">
+                    <p className="mt-1 text-xs text-slate-500">
                       {CATEGORY_LABELS[listing.category as Category]} ·{' '}
-                      {listing.price === 0
-                        ? 'Free'
-                        : `$${(listing.price / 100).toFixed(2)}`}{' '}
-                      · {listing.is_published ? 'Published' : 'Draft'}
+                      {listing.price === 0 ? 'Free' : `$${(listing.price / 100).toFixed(2)}`} ·{' '}
+                      <span className={listing.is_published ? 'text-emerald-500/90' : 'text-amber-500/90'}>
+                        {listing.is_published ? 'Live' : 'Draft'}
+                      </span>
                     </p>
                   </div>
-                  <div className="ml-2 flex items-center gap-2">
+                  <div className="flex shrink-0 flex-wrap items-center gap-2">
                     <Link
                       to={`/listing/${listing.id}`}
-                      className="text-sm text-primary-400 hover:underline"
+                      className="rounded-full border border-white/10 px-4 py-1.5 text-xs font-semibold text-slate-300 transition hover:border-white/20 hover:text-white"
                     >
                       View
                     </Link>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowCreate(false)
+                        setEditingListing(listing)
+                      }}
+                      className="rounded-full border border-primary-500/35 bg-primary-500/10 px-4 py-1.5 text-xs font-semibold text-primary-200 transition hover:bg-primary-500/20"
+                    >
+                      Edit
+                    </button>
                     <button
                       type="button"
                       onClick={() => {
@@ -198,9 +180,9 @@ export default function SellerDashboard() {
                         if (ok) handleDeleteListing(listing.id)
                       }}
                       disabled={deleteId === listing.id}
-                      className="rounded-lg bg-slate-700 px-3 py-1.5 text-sm text-slate-200 hover:bg-red-700 disabled:opacity-60"
+                      className="rounded-full bg-white/[0.06] px-4 py-1.5 text-xs font-semibold text-slate-400 ring-1 ring-white/10 transition hover:bg-red-950/50 hover:text-red-300 hover:ring-red-500/30 disabled:opacity-60"
                     >
-                      {deleteId === listing.id ? 'Deleting…' : 'Delete'}
+                      {deleteId === listing.id ? 'Deleting…' : 'Remove'}
                     </button>
                   </div>
                 </div>

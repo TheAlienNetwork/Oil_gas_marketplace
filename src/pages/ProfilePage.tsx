@@ -323,7 +323,7 @@ export default function ProfilePage() {
                 <input value={location} onChange={(e) => setLocation(e.target.value)} placeholder="Location (e.g. Houston, TX)" className="mt-2 w-full rounded-lg border border-slate-600 bg-slate-800 px-3 py-2 text-slate-200 placeholder-slate-500" />
                 <label className="mt-2 flex items-center gap-2 text-slate-300">
                   <input type="checkbox" checked={openToWork} onChange={(e) => setOpenToWork(e.target.checked)} className="rounded border-slate-600 bg-slate-800 text-primary-600" />
-                  Open to work (visible on Talent)
+                  Open to work (badge on your profile)
                 </label>
                 <div className="mt-3 flex gap-2">
                   <button type="button" onClick={handleSaveProfile} disabled={saving} className="rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-white hover:bg-primary-500 disabled:opacity-50">Save</button>
@@ -490,7 +490,11 @@ export default function ProfilePage() {
             {posts.length === 0 ? (
               <div className="rounded-xl border border-slate-700 bg-slate-800/30 p-8 text-center text-slate-500">
                 No posts yet.
-                {isOwnProfile && <Link to="/feed" className="mt-4 inline-block text-primary-400 hover:underline">Share on Feed</Link>}
+                {isOwnProfile && (
+                  <Link to="/dashboard" className="mt-4 inline-block text-primary-400 hover:underline">
+                    Sell on the marketplace
+                  </Link>
+                )}
               </div>
             ) : (
               <ul className="space-y-4">
@@ -502,7 +506,13 @@ export default function ProfilePage() {
                     {post.video_url && <video src={post.video_url} controls className="mt-3 max-h-72 w-full rounded-lg bg-black" />}
                   </li>
                 ))}
-                {isOwnProfile && <li><Link to="/feed" className="text-sm text-primary-400 hover:underline">View all on Feed</Link></li>}
+                {isOwnProfile && (
+                  <li>
+                    <Link to="/marketplace" className="text-sm text-primary-400 hover:underline">
+                      Browse marketplace
+                    </Link>
+                  </li>
+                )}
               </ul>
             )}
           </section>

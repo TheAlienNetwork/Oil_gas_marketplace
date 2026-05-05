@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
-import { supabase } from '@/lib/supabase'
+import { requestGenerateDownloadUrl, supabase } from '@/lib/supabase'
 import { useAuth } from '@/context/AuthContext'
 import type { PurchaseGrant } from '@/lib/types'
 import { CATEGORY_LABELS, LISTING_TYPES, type Category } from '@/lib/constants'
@@ -30,53 +30,28 @@ export default function AppLibrary() {
 
   const getDownloadUrl = async (grantId: string) => {
     setDownloadError('')
-    const { data: { session: initialSession } } = await supabase.auth.getSession()
-    if (!initialSession?.access_token) {
+    const {
+      data: { session },
+    } = await supabase.auth.getSession()
+    if (!session?.access_token) {
       setDownloadError('Please sign in and try again.')
       return
     }
-    let token = initialSession.access_token
+    let accessToken = session.access_token
     try {
-      const { data: { session } } = await supabase.auth.refreshSession({
-        refresh_token: initialSession.refresh_token,
+      const { data: ref } = await supabase.auth.refreshSession({
+        refresh_token: session.refresh_token,
       })
-      if (session?.access_token) token = session.access_token
+      if (ref.session?.access_token) accessToken = ref.session.access_token
     } catch {
-      // use initial token
+      // continue with existing token
     }
-    const apiUrl = '/api/generate-download-url'
-    let res: Response
-    try {
-      res = await fetch(apiUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ grantId, access_token: token }),
-      })
-    } catch (err) {
-      setDownloadError('Could not reach the download service. Try again.')
+    const { url, error } = await requestGenerateDownloadUrl(grantId, accessToken)
+    if (error) {
+      setDownloadError(error)
       return
     }
-    let body: { url?: string; error?: string } = {}
-    try {
-      const text = await res.text()
-      body = text ? (JSON.parse(text) as { url?: string; error?: string }) : {}
-    } catch {
-      setDownloadError('Download service returned an invalid response.')
-      return
-    }
-    if (res.ok && body.url) {
-      window.open(body.url, '_blank')
-      return
-    }
-    setDownloadError(
-      typeof body.error === 'string'
-        ? body.error
-        : res.status === 401
-          ? 'Sign-in expired or invalid. Sign out and sign back in, then try again.'
-          : res.status === 404
-            ? 'Download not found for this purchase.'
-            : 'Download failed. Try again later.'
-    )
+    if (url) window.open(url, '_blank')
   }
 
   if (loading) {
@@ -148,20 +123,30 @@ export default function AppLibrary() {
                     </p>
                   )}
                   <div className="mt-auto flex flex-wrap gap-2 pt-4">
-                    {isWebApp ? (
+                    {isWebApp && (
                       <Link
                         to={`/app/${grant.id}`}
                         className="rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-white hover:bg-primary-500"
                       >
                         Open app
                       </Link>
-                    ) : (
+                    )}
+                    {!isWebApp && (
                       <button
                         type="button"
                         onClick={() => getDownloadUrl(grant.id)}
                         className="rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-white hover:bg-primary-500"
                       >
-                        {isDesktopApp ? 'Download' : 'Download'}
+                        {isDesktopApp ? 'Download for Windows' : 'Download'}
+                      </button>
+                    )}
+                    {isWebApp && (
+                      <button
+                        type="button"
+                        onClick={() => getDownloadUrl(grant.id)}
+                        className="rounded-lg border border-slate-600 px-4 py-2 text-sm text-slate-200 hover:bg-slate-700"
+                      >
+                        Download package
                       </button>
                     )}
                     <Link

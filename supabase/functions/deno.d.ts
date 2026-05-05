@@ -12,9 +12,11 @@ declare module 'https://deno.land/std@0.168.0/http/server.ts' {
 }
 
 declare module 'https://esm.sh/@supabase/supabase-js@2' {
-  export function createClient(supabaseUrl: string, supabaseKey: string): any
+  import type { SupabaseClient } from '@supabase/supabase-js'
+  export function createClient(supabaseUrl: string, supabaseKey: string): SupabaseClient
 }
 
 declare module 'npm:@supabase/supabase-js@2' {
-  export function createClient(supabaseUrl: string, supabaseKey: string): any
+  import type { SupabaseClient } from '@supabase/supabase-js'
+  export function createClient(supabaseUrl: string, supabaseKey: string): SupabaseClient
 }

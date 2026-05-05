@@ -12,12 +12,11 @@ import AppPlayer from '@/pages/AppPlayer'
 import Messages from '@/pages/Messages'
 import Conversation from '@/pages/Conversation'
 import ProfilePage from '@/pages/ProfilePage'
-import Feed from '@/pages/Feed'
 import OrganizationsList from '@/pages/OrganizationsList'
 import CreateOrganization from '@/pages/CreateOrganization'
 import OrganizationDetail from '@/pages/OrganizationDetail'
 import RigDetail from '@/pages/RigDetail'
-import Talent from '@/pages/Talent'
+import Checkout from '@/pages/Checkout'
 import { useAuth } from '@/context/AuthContext'
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
@@ -41,8 +40,8 @@ export default function App() {
         <Route path="marketplace" element={<Browse />} />
         <Route path="browse" element={<Navigate to="/marketplace" replace />} />
         <Route path="listing/:id" element={<ListingDetail />} />
-        <Route path="talent" element={<Talent />} />
-        <Route path="feed" element={<Feed />} />
+        <Route path="talent" element={<Navigate to="/marketplace" replace />} />
+        <Route path="feed" element={<Navigate to="/marketplace" replace />} />
         <Route path="profile" element={<ProfilePage />} />
         <Route path="profile/:userId" element={<ProfilePage />} />
         <Route
@@ -92,6 +91,14 @@ export default function App() {
           element={
             <ProtectedRoute>
               <MyPurchases />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="checkout"
+          element={
+            <ProtectedRoute>
+              <Checkout />
             </ProtectedRoute>
           }
         />

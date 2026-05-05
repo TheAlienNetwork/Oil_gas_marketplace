@@ -24,5 +24,11 @@ export default tseslint.config(
         { allowConstantExport: true },
       ],
     },
+  },
+  {
+    files: ['src/context/AuthContext.tsx', 'src/context/CartContext.tsx'],
+    rules: {
+      'react-refresh/only-export-components': 'off',
+    },
   }
 )
