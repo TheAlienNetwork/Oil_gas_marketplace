@@ -17,7 +17,10 @@ export default async function handler(req: { method?: string; body?: unknown; he
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
   if (!url || !serviceRoleKey) {
     res.setHeader('Access-Control-Allow-Origin', '*')
-    return res.status(500).json({ error: 'Server misconfigured: missing Supabase env' })
+    const missing = [!url && 'SUPABASE_URL', !serviceRoleKey && 'SUPABASE_SERVICE_ROLE_KEY'].filter(Boolean).join(', ')
+    return res.status(500).json({
+      error: `Server misconfigured: missing ${missing}. Add them in Vercel → Project → Settings → Environment Variables, then redeploy.`,
+    })
   }
 
   const body = typeof req.body === 'string' ? JSON.parse(req.body || '{}') : req.body || {}
