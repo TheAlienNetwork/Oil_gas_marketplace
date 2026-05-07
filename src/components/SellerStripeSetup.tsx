@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
-import { requestStripeConnectOnboard, supabase } from '@/lib/supabase'
+import { requestStripeConnectOnboard, requestStripeConnectSync, supabase } from '@/lib/supabase'
+import { useAuth } from '@/context/AuthContext'
 import { PLATFORM_FEE_PERCENT } from '@/lib/constants'
 import type { Profile } from '@/lib/types'
 
@@ -30,31 +31,119 @@ function isStripeConnectNotEnabledError(message: string): boolean {
   return (
     m.includes('signed up for connect') ||
     m.includes('stripe connect is not enabled') ||
-    (m.includes('you can only create new accounts') && m.includes('connect'))
+    (m.includes('you can only create new accounts') && m.includes('connect')) ||
+    (m.includes('connect') && m.includes('not enabled'))
   )
 }
 
+function isStripeConnectSecretKeyError(message: string): boolean {
+  const m = message.toLowerCase()
+  return m.includes('cannot create connect accounts')
+}
+
+function isStripeConnectPlatformProfileError(message: string): boolean {
+  const m = message.toLowerCase()
+  return (
+    m.includes('platform-profile') ||
+    m.includes('platform profile') ||
+    m.includes('managing losses') ||
+    m.includes('loss liability') ||
+    m.includes('losses for connected') ||
+    (m.includes('finish your stripe connect platform profile') && m.includes('loss'))
+  )
+}
+
+function StripeConnectPlatformProfilePanel() {
+  return (
+    <div className="rounded-xl border border-amber-500/30 bg-amber-950/35 px-4 py-4 text-left text-sm text-amber-100/90 ring-1 ring-amber-500/20">
+      <p className="font-semibold text-amber-100">For the marketplace owner — Connect platform profile</p>
+      <p className="mt-2 text-xs leading-relaxed text-amber-100/75">
+        Stripe is blocking seller onboarding until you complete the <strong className="text-amber-50">platform profile</strong>,
+        including <strong className="text-amber-50">loss liability</strong> responsibilities for connected accounts. Use the
+        same <strong className="text-amber-50">Test / Live</strong> toggle in the Dashboard as your{' '}
+        <code className="rounded bg-black/30 px-1 py-0.5 text-[11px]">STRIPE_SECRET_KEY</code> in Supabase.
+      </p>
+      <p className="mt-3 text-xs text-amber-100/85">
+        <a
+          href="https://dashboard.stripe.com/test/settings/connect/platform-profile"
+          target="_blank"
+          rel="noreferrer"
+          className="font-medium text-amber-300 underline-offset-2 hover:text-amber-200 hover:underline"
+        >
+          Test mode — platform profile
+        </a>
+        {' · '}
+        <a
+          href="https://dashboard.stripe.com/settings/connect/platform-profile"
+          target="_blank"
+          rel="noreferrer"
+          className="font-medium text-amber-300 underline-offset-2 hover:text-amber-200 hover:underline"
+        >
+          Live mode — platform profile
+        </a>
+      </p>
+    </div>
+  )
+}
+
+function stripePublishableMode(): 'test' | 'live' | 'unknown' {
+  const pk = (import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY as string | undefined)?.trim() ?? ''
+  if (pk.startsWith('pk_test_')) return 'test'
+  if (pk.startsWith('pk_live_')) return 'live'
+  return 'unknown'
+}
+
 function StripeConnectActivationPanel() {
+  const mode = stripePublishableMode()
+  const modeHint =
+    mode === 'test'
+      ? 'Your app’s publishable key is Test (pk_test_). In Supabase Edge secrets, STRIPE_SECRET_KEY must be a Test secret (sk_test_…), then finish Connect in Test mode below.'
+      : mode === 'live'
+        ? 'Your app’s publishable key is Live (pk_live_). Use a Live secret (sk_live_…) in Supabase and complete Connect in Live mode.'
+        : 'Set VITE_STRIPE_PUBLISHABLE_KEY so Test vs Live is obvious. STRIPE_SECRET_KEY in Supabase must be the same mode (sk_test_ vs sk_live_).'
+
   return (
     <div className="rounded-xl border border-violet-500/25 bg-violet-950/30 px-4 py-4 text-left text-sm text-violet-100/90 ring-1 ring-violet-500/15">
       <p className="font-semibold text-violet-100">For the marketplace owner</p>
       <p className="mt-2 text-xs leading-relaxed text-violet-100/75">
         Your Stripe account can accept payments, but <strong className="text-violet-100">Connect</strong> must be
-        turned on before this app can create seller (connected) accounts. Use the same mode as your API key (
-        <strong className="text-violet-100">Test</strong> vs <strong className="text-violet-100">Live</strong>).
+        turned on before this app can create seller (connected) accounts. Finish the Connect platform onboarding
+        (branding, responsibilities, etc.) — Express accounts match this app.
       </p>
+      <p className="mt-2 text-xs leading-relaxed text-violet-200/80">{modeHint}</p>
       <ol className="mt-3 list-decimal space-y-2 pl-5 text-xs text-violet-100/85">
         <li>
-          Open{' '}
+          Open Connect for the mode you use:{' '}
+          <a
+            href="https://dashboard.stripe.com/test/connect"
+            target="_blank"
+            rel="noreferrer"
+            className="font-medium text-violet-300 underline-offset-2 hover:text-violet-200 hover:underline"
+          >
+            Test mode Connect
+          </a>{' '}
+          ·{' '}
           <a
             href="https://dashboard.stripe.com/connect"
             target="_blank"
             rel="noreferrer"
             className="font-medium text-violet-300 underline-offset-2 hover:text-violet-200 hover:underline"
           >
-            Stripe Dashboard → Connect
+            Live mode Connect
+          </a>
+          . Complete any &quot;Get started&quot; or platform profile steps Stripe shows.
+        </li>
+        <li>
+          If Connect still fails, open{' '}
+          <a
+            href="https://dashboard.stripe.com/settings/connect"
+            target="_blank"
+            rel="noreferrer"
+            className="font-medium text-violet-300 underline-offset-2 hover:text-violet-200 hover:underline"
+          >
+            Settings → Connect
           </a>{' '}
-          and complete platform onboarding (Express works with this app).
+          (toggle Test/Live in the Dashboard header to match your keys).
         </li>
         <li>Return here and click <strong className="text-violet-100">Start setup with Stripe</strong> again.</li>
       </ol>
@@ -134,6 +223,7 @@ interface SellerStripeSetupProps {
 }
 
 export default function SellerStripeSetup({ profile }: SellerStripeSetupProps) {
+  const { refreshProfile } = useAuth()
   const [connecting, setConnecting] = useState(false)
   const [connectError, setConnectError] = useState('')
 
@@ -146,6 +236,44 @@ export default function SellerStripeSetup({ profile }: SellerStripeSetupProps) {
       window.history.replaceState({}, '', '/dashboard')
     }
   }, [])
+
+  const syncFromStripe = async () => {
+    setConnectError('')
+    setConnecting(true)
+    try {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession()
+      if (!session?.access_token) {
+        setConnectError('Sign in again, then retry.')
+        return
+      }
+      let token = session.access_token
+      try {
+        const { data: ref } = await supabase.auth.refreshSession({
+          refresh_token: session.refresh_token,
+        })
+        if (ref.session?.access_token) token = ref.session.access_token
+      } catch {
+        /* use existing token */
+      }
+      const sync = await requestStripeConnectSync(token)
+      await refreshProfile()
+      if (sync.error) {
+        setConnectError(sync.error)
+        return
+      }
+      if (sync.stripe_onboarding_complete === true) {
+        setConnectError('')
+        return
+      }
+      setConnectError(
+        'Stripe still shows setup or charges as pending. Open Continue with Stripe if anything is incomplete, or check your Express dashboard—verification can take a minute after you submit.'
+      )
+    } finally {
+      setConnecting(false)
+    }
+  }
 
   const openStripeFlow = async (intent: ConnectIntent) => {
     setConnectError('')
@@ -233,7 +361,8 @@ export default function SellerStripeSetup({ profile }: SellerStripeSetupProps) {
               {connectError}
             </p>
             {isStripeConnectNotEnabledError(connectError) && <StripeConnectActivationPanel />}
-            {isStripePlatformConfigError(connectError) && (
+            {isStripeConnectPlatformProfileError(connectError) && <StripeConnectPlatformProfilePanel />}
+            {(isStripePlatformConfigError(connectError) || isStripeConnectSecretKeyError(connectError)) && (
               <StripeOwnerConfigPanel
                 edgeFunctionsSettingsUrl={edgeFunctionsSettingsUrl}
                 projectRef={projectRef}
@@ -299,6 +428,16 @@ export default function SellerStripeSetup({ profile }: SellerStripeSetupProps) {
         >
           {connecting ? 'Connecting…' : hasAccount ? 'Continue with Stripe' : 'Start setup with Stripe'}
         </button>
+        {hasAccount && (
+          <button
+            type="button"
+            disabled={connecting}
+            onClick={syncFromStripe}
+            className="rounded-full border border-amber-500/35 bg-amber-950/30 px-4 py-2 text-xs font-semibold text-amber-200/90 transition hover:border-amber-400/50 hover:bg-amber-900/40 disabled:opacity-50"
+          >
+            {connecting ? 'Checking…' : 'Refresh verification status'}
+          </button>
+        )}
         {!hasAccount && (
           <span className="text-xs text-amber-100/45">Secure redirect · you&apos;ll return here when finished</span>
         )}
@@ -310,7 +449,8 @@ export default function SellerStripeSetup({ profile }: SellerStripeSetupProps) {
             {connectError}
           </p>
           {isStripeConnectNotEnabledError(connectError) && <StripeConnectActivationPanel />}
-          {isStripePlatformConfigError(connectError) && (
+          {isStripeConnectPlatformProfileError(connectError) && <StripeConnectPlatformProfilePanel />}
+          {(isStripePlatformConfigError(connectError) || isStripeConnectSecretKeyError(connectError)) && (
             <StripeOwnerConfigPanel
               edgeFunctionsSettingsUrl={edgeFunctionsSettingsUrl}
               projectRef={projectRef}

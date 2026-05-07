@@ -1,4 +1,7 @@
-import type { ListingType, Category } from './constants'
+import type { ListingType, Category, Subcategory } from './constants'
+import type { ListingGalleryItem } from './listingGallery'
+
+export type { ListingGalleryItem } from './listingGallery'
 
 export interface Profile {
   id: string
@@ -99,10 +102,18 @@ export interface Listing {
   listing_type: ListingType
   price: number
   category: Category
+  /** O&G discipline / topic (MWD, DD, etc.) — separate from product format `category`. */
+  subcategory?: Subcategory | null
   thumbnail_url: string | null
+  /** Ordered photos & videos for the product page (JSON from DB). */
+  gallery_media?: ListingGalleryItem[] | null
   file_storage_path: string | null
   app_bundle_path: string | null
+  /** Original deliverable filename at upload (shown to buyers). */
+  product_original_filename?: string | null
   demo_video_url: string | null
+  /** Optional HTTPS URL embedded on listing for web_app demos only (not the paid bundle). */
+  preview_embed_url?: string | null
   is_subscription: boolean
   price_per_month_cents: number | null
   is_published: boolean

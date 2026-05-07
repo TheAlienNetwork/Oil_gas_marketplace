@@ -1,28 +1,140 @@
-import { useState, useEffect } from 'react'
-import { Link } from 'react-router-dom'
-import { requestGenerateDownloadUrl, supabase } from '@/lib/supabase'
+import { useState, useEffect, useCallback } from 'react'
+import { Link, useSearchParams } from 'react-router-dom'
+import {
+  requestFulfillCheckout,
+  requestGenerateDownloadUrl,
+  supabase,
+  type FulfillCheckoutResult,
+} from '@/lib/supabase'
 import { useAuth } from '@/context/AuthContext'
+import { useCart } from '@/context/CartContext'
 import type { PurchaseGrant } from '@/lib/types'
-import { CATEGORY_LABELS, LISTING_TYPES, type Category } from '@/lib/constants'
+import {
+  CATEGORY_LABELS,
+  LISTING_TYPES,
+  SUBCATEGORY_LABELS,
+  coerceCategory,
+  coerceSubcategory,
+  type Category,
+} from '@/lib/constants'
+import { consumePendingCartClear } from '@/lib/stripeCheckoutStorage'
+
+const FULFILL_RETRY_BACKOFF_MS = [400, 700, 1100, 1600, 2200, 2800, 3500] as const
+const MAX_FULFILL_ATTEMPTS = FULFILL_RETRY_BACKOFF_MS.length + 2
+const LIBRARY_POLL_MS = 2000
+const LIBRARY_POLL_MAX = 15
+
+function sleep(ms: number) {
+  return new Promise<void>((r) => setTimeout(r, ms))
+}
 
 export default function MyPurchases() {
   const { user } = useAuth()
-  const [grants, setGrants] = useState<(PurchaseGrant & { listings?: { title: string; listing_type: string; category: Category } })[]>([])
+  const { removeLine } = useCart()
+  const [searchParams, setSearchParams] = useSearchParams()
+  const [grants, setGrants] = useState<
+    (PurchaseGrant & {
+      listings?: { title: string; listing_type: string; category: Category; subcategory?: string | null }
+    })[]
+  >([])
   const [loading, setLoading] = useState(true)
   const [downloadError, setDownloadError] = useState('')
+  const [libraryFinalizeError, setLibraryFinalizeError] = useState('')
 
-  useEffect(() => {
-    if (!user?.id) return
-    supabase
+  const checkoutReturnSessionId = searchParams.get('session_id')
+
+  const fetchGrants = useCallback(async (): Promise<number> => {
+    if (!user?.id) return 0
+    const { data } = await supabase
       .from('purchase_grants')
-      .select('*, listings(title, listing_type, category)')
+      .select('*, listings!listing_id(title, listing_type, category, subcategory)')
       .eq('user_id', user.id)
       .order('created_at', { ascending: false })
-      .then(({ data }) => {
-        setGrants((data as typeof grants) ?? [])
-        setLoading(false)
-      })
+    const rows = (data as typeof grants) ?? []
+    setGrants(rows)
+    return rows.length
   }, [user?.id])
+
+  useEffect(() => {
+    if (!user?.id) {
+      setLoading(false)
+      return
+    }
+
+    let cancelled = false
+
+    void (async () => {
+      setLoading(true)
+
+      if (checkoutReturnSessionId) {
+        setLibraryFinalizeError('')
+        const pending = consumePendingCartClear()
+        if (pending) {
+          for (const listingId of pending.listingIds) {
+            removeLine(listingId)
+          }
+        }
+        const {
+          data: { session },
+        } = await supabase.auth.getSession()
+        if (!session?.access_token) {
+          setLibraryFinalizeError('Sign in to finish adding your purchase to your library.')
+        } else {
+          let token = session.access_token
+          try {
+            const { data: ref } = await supabase.auth.refreshSession({
+              refresh_token: session.refresh_token,
+            })
+            if (ref.session?.access_token) token = ref.session.access_token
+          } catch {
+            /* use existing token */
+          }
+          await sleep(300)
+
+          let lastResult: FulfillCheckoutResult | null = null
+          for (let attempt = 0; attempt < MAX_FULFILL_ATTEMPTS; attempt++) {
+            lastResult = await requestFulfillCheckout(checkoutReturnSessionId, token)
+            if (lastResult.ok) break
+            if (!lastResult.retryable) break
+            const waitMs =
+              FULFILL_RETRY_BACKOFF_MS[Math.min(attempt, FULFILL_RETRY_BACKOFF_MS.length - 1)] ?? 2000
+            await sleep(waitMs)
+          }
+          if (lastResult && !lastResult.ok) {
+            setLibraryFinalizeError(
+              lastResult.error ?? 'Could not add your purchase to the library yet. This page will keep checking.'
+            )
+          }
+        }
+        setSearchParams(
+          (prev) => {
+            const next = new URLSearchParams(prev)
+            next.delete('session_id')
+            return next
+          },
+          { replace: true }
+        )
+      }
+
+      if (cancelled) return
+      let count = await fetchGrants()
+      if (checkoutReturnSessionId && count === 0) {
+        for (let poll = 0; poll < LIBRARY_POLL_MAX && !cancelled; poll++) {
+          await sleep(LIBRARY_POLL_MS)
+          count = await fetchGrants()
+          if (count > 0) {
+            setLibraryFinalizeError('')
+            break
+          }
+        }
+      }
+      if (!cancelled) setLoading(false)
+    })()
+
+    return () => {
+      cancelled = true
+    }
+  }, [user?.id, checkoutReturnSessionId, setSearchParams, removeLine, fetchGrants])
 
   const getDownloadUrl = async (grantId: string) => {
     setDownloadError('')
@@ -71,6 +183,21 @@ export default function MyPurchases() {
           {downloadError}
         </p>
       )}
+      {libraryFinalizeError && (
+        <div className="mt-6 rounded-xl bg-amber-950/35 px-4 py-3 text-sm text-amber-200 ring-1 ring-amber-500/25">
+          <p>{libraryFinalizeError}</p>
+          <button
+            type="button"
+            onClick={() => {
+              setLibraryFinalizeError('')
+              void fetchGrants()
+            }}
+            className="mt-2 text-xs font-semibold text-primary-300 underline decoration-primary-500/40 underline-offset-2 hover:text-primary-200"
+          >
+            Refresh library
+          </button>
+        </div>
+      )}
       {grants.length === 0 ? (
         <div className="mt-12 rounded-2xl border border-dashed border-white/10 bg-slate-900/20 py-16 text-center">
           <p className="text-slate-400">Your library is empty.</p>
@@ -95,7 +222,13 @@ export default function MyPurchases() {
                 <div>
                   <p className="font-medium text-white">{listing?.title ?? 'Listing'}</p>
                   <p className="mt-1 text-xs font-medium uppercase tracking-wider text-slate-500">
-                    {listing ? CATEGORY_LABELS[listing.category] : ''}
+                    {listing
+                      ? `${CATEGORY_LABELS[coerceCategory(listing.category)]}${
+                          coerceSubcategory(listing.subcategory ?? undefined) !== 'general'
+                            ? ` · ${SUBCATEGORY_LABELS[coerceSubcategory(listing.subcategory ?? undefined)]}`
+                            : ''
+                        }`
+                      : ''}
                   </p>
                 </div>
                 <div className="flex shrink-0 flex-wrap gap-2">

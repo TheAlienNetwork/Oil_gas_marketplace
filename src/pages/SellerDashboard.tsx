@@ -1,9 +1,15 @@
 import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
-import { supabase } from '@/lib/supabase'
+import { requestStripeConnectSync, supabase } from '@/lib/supabase'
 import { useAuth } from '@/context/AuthContext'
 import type { Listing } from '@/lib/types'
-import { CATEGORY_LABELS, PLATFORM_FEE_PERCENT, type Category } from '@/lib/constants'
+import {
+  CATEGORY_LABELS,
+  PLATFORM_FEE_PERCENT,
+  SUBCATEGORY_LABELS,
+  coerceCategory,
+  coerceSubcategory,
+} from '@/lib/constants'
 import CreateListingForm from '@/components/CreateListingForm'
 import SellerStripeSetup from '@/components/SellerStripeSetup'
 
@@ -18,9 +24,38 @@ export default function SellerDashboard() {
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
-    if (params.get('stripe') === 'connected') {
-      refreshProfile()
-      window.history.replaceState({}, '', '/dashboard')
+    if (params.get('stripe') !== 'connected') return
+
+    let cancelled = false
+    void (async () => {
+      const attempts = 8
+      const delayMs = 1500
+      for (let i = 0; i < attempts; i++) {
+        if (cancelled) return
+        if (i > 0) await new Promise((r) => setTimeout(r, delayMs))
+        const {
+          data: { session },
+        } = await supabase.auth.getSession()
+        if (!session?.access_token) break
+        let token = session.access_token
+        try {
+          const { data: ref } = await supabase.auth.refreshSession({
+            refresh_token: session.refresh_token,
+          })
+          if (ref.session?.access_token) token = ref.session.access_token
+        } catch {
+          /* keep token */
+        }
+        const sync = await requestStripeConnectSync(token)
+        await refreshProfile()
+        if (sync.stripe_onboarding_complete === true) break
+        if (sync.error) break
+      }
+      if (!cancelled) window.history.replaceState({}, '', '/dashboard')
+    })()
+
+    return () => {
+      cancelled = true
     }
   }, [refreshProfile])
 
@@ -147,8 +182,11 @@ export default function SellerDashboard() {
                       {listing.title}
                     </Link>
                     <p className="mt-1 text-xs text-slate-500">
-                      {CATEGORY_LABELS[listing.category as Category]} ·{' '}
-                      {listing.price === 0 ? 'Free' : `$${(listing.price / 100).toFixed(2)}`} ·{' '}
+                      {CATEGORY_LABELS[coerceCategory(listing.category)]}
+                      {coerceSubcategory(listing.subcategory ?? undefined) !== 'general'
+                        ? ` · ${SUBCATEGORY_LABELS[coerceSubcategory(listing.subcategory ?? undefined)]}`
+                        : ''}{' '}
+                      · {listing.price === 0 ? 'Free' : `$${(listing.price / 100).toFixed(2)}`} ·{' '}
                       <span className={listing.is_published ? 'text-emerald-500/90' : 'text-amber-500/90'}>
                         {listing.is_published ? 'Live' : 'Draft'}
                       </span>

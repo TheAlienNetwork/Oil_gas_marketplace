@@ -3,10 +3,23 @@ import { Link } from 'react-router-dom'
 import { requestGenerateDownloadUrl, supabase } from '@/lib/supabase'
 import { useAuth } from '@/context/AuthContext'
 import type { PurchaseGrant } from '@/lib/types'
-import { CATEGORY_LABELS, LISTING_TYPES, type Category } from '@/lib/constants'
+import {
+  CATEGORY_LABELS,
+  LISTING_TYPES,
+  SUBCATEGORY_LABELS,
+  coerceCategory,
+  coerceSubcategory,
+  type Category,
+} from '@/lib/constants'
 
 type GrantWithListing = PurchaseGrant & {
-  listings?: { title: string; listing_type: string; category: Category; thumbnail_url?: string | null }
+  listings?: {
+    title: string
+    listing_type: string
+    category: Category
+    subcategory?: string | null
+    thumbnail_url?: string | null
+  }
 }
 
 export default function AppLibrary() {
@@ -19,7 +32,7 @@ export default function AppLibrary() {
     if (!user?.id) return
     supabase
       .from('purchase_grants')
-      .select('*, listings(title, listing_type, category, thumbnail_url)')
+      .select('*, listings!listing_id(title, listing_type, category, subcategory, thumbnail_url)')
       .eq('user_id', user.id)
       .order('created_at', { ascending: false })
       .then(({ data }) => {
@@ -94,7 +107,13 @@ export default function AppLibrary() {
             const isWebApp = listing?.listing_type === LISTING_TYPES.web_app
             const isDesktopApp = listing?.listing_type === LISTING_TYPES.desktop_app
             const title = listing?.title ?? 'App'
-            const category = listing?.category
+            const catLabel = listing?.category
+              ? CATEGORY_LABELS[coerceCategory(listing.category)]
+              : null
+            const subLabel =
+              listing?.subcategory && coerceSubcategory(listing.subcategory) !== 'general'
+                ? SUBCATEGORY_LABELS[coerceSubcategory(listing.subcategory)]
+                : null
             const imageUrl = listing?.thumbnail_url
 
             return (
@@ -117,9 +136,11 @@ export default function AppLibrary() {
                 </div>
                 <div className="flex flex-1 flex-col p-4">
                   <h2 className="font-semibold text-white">{title}</h2>
-                  {category && (
+                  {(catLabel || subLabel) && (
                     <p className="mt-0.5 text-sm text-slate-500">
-                      {CATEGORY_LABELS[category]}
+                      {catLabel}
+                      {catLabel && subLabel ? ' · ' : ''}
+                      {subLabel}
                     </p>
                   )}
                   <div className="mt-auto flex flex-wrap gap-2 pt-4">

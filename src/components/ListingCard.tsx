@@ -1,7 +1,12 @@
 import { Link, useNavigate } from 'react-router-dom'
 import { useEffect, useState } from 'react'
 import type { Listing } from '@/lib/types'
-import { CATEGORY_LABELS, type Category } from '@/lib/constants'
+import {
+  CATEGORY_LABELS,
+  SUBCATEGORY_LABELS,
+  coerceCategory,
+  coerceSubcategory,
+} from '@/lib/constants'
 import { HeartFilledIcon, HeartIcon } from '@/components/Icons'
 import { useAuth } from '@/context/AuthContext'
 import { useCart } from '@/context/CartContext'
@@ -18,8 +23,9 @@ export default function ListingCard({
   isFavorited,
   onFavoriteChange,
 }: ListingCardProps) {
-  const categoryLabel =
-    CATEGORY_LABELS[listing.category as Category] || listing.category
+  const categoryLabel = CATEGORY_LABELS[coerceCategory(listing.category)]
+  const subKey = coerceSubcategory(listing.subcategory ?? undefined)
+  const subBadge = subKey !== 'general' ? SUBCATEGORY_LABELS[subKey] : null
   const isSubscription = Boolean(
     (listing as Listing & { is_subscription?: boolean }).is_subscription
   )
@@ -119,9 +125,16 @@ export default function ListingCard({
             <HeartIcon className="h-5 w-5" />
           )}
         </button>
-        <span className="absolute bottom-3 left-3 rounded-full bg-slate-950/55 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider text-primary-300 backdrop-blur-md ring-1 ring-white/10">
-          {categoryLabel}
-        </span>
+        <div className="absolute bottom-3 left-3 flex max-w-[calc(100%-1.5rem)] flex-wrap gap-1.5">
+          <span className="rounded-full bg-slate-950/55 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider text-primary-300 backdrop-blur-md ring-1 ring-white/10">
+            {categoryLabel}
+          </span>
+          {subBadge && (
+            <span className="rounded-full bg-slate-950/75 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider text-slate-200 backdrop-blur-md ring-1 ring-white/15">
+              {subBadge}
+            </span>
+          )}
+        </div>
       </div>
 
       <div className="flex flex-1 flex-col p-5">

@@ -18,13 +18,38 @@ const json = (body: object, status: number) =>
     headers: { ...corsHeaders, 'Content-Type': 'application/json' },
   })
 
+/** Stripe SDK throws objects with `message` and often `code`; stringify alone can miss details. */
+function stripeThrownDetails(e: unknown): { message: string; code?: string } {
+  if (e && typeof e === 'object') {
+    const o = e as Record<string, unknown>
+    const topCode = typeof o.code === 'string' ? o.code : undefined
+    if (typeof o.message === 'string' && o.message.length > 0) {
+      return { message: o.message, code: topCode }
+    }
+    const raw = o.raw
+    if (raw && typeof raw === 'object') {
+      const r = raw as Record<string, unknown>
+      const code = (typeof r.code === 'string' ? r.code : topCode) ?? topCode
+      if (typeof r.message === 'string' && r.message.length > 0) {
+        return { message: r.message, code }
+      }
+    }
+  }
+  return { message: String(e) }
+}
+
 const stripeSecretKey = Deno.env.get('STRIPE_SECRET_KEY')?.trim() ?? ''
 const stripe = new Stripe(stripeSecretKey, {
   apiVersion: '2023-10-16',
   httpClient: Stripe.createFetchHttpClient(),
 })
 
-type ConnectIntent = 'onboarding' | 'update' | 'express_dashboard'
+type ConnectIntent = 'onboarding' | 'update' | 'express_dashboard' | 'sync_status'
+
+/** Same rule as stripe-webhook account.updated — seller can receive Checkout payouts. */
+function expressOnboardingReady(account: Stripe.Account): boolean {
+  return Boolean(account.details_submitted && account.charges_enabled)
+}
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -61,7 +86,7 @@ serve(async (req) => {
     const intent = (body.intent ?? 'onboarding') as ConnectIntent
     const userIdBody = body.userId as string | undefined
 
-    if (!['onboarding', 'update', 'express_dashboard'].includes(intent)) {
+    if (!['onboarding', 'update', 'express_dashboard', 'sync_status'].includes(intent)) {
       return json({ error: 'Invalid intent' }, 400)
     }
 
@@ -90,6 +115,22 @@ serve(async (req) => {
     const origin = (Deno.env.get('FRONTEND_URL') ?? new URL(req.url).origin).replace(/\/$/, '')
     const refreshUrl = `${origin}/dashboard?stripe=refresh`
     const returnUrl = `${origin}/dashboard?stripe=connected`
+
+    if (intent === 'sync_status') {
+      if (!accountId) {
+        return json({ error: 'No Connect account on file yet.' }, 400)
+      }
+      const account = await stripe.accounts.retrieve(accountId)
+      const ready = expressOnboardingReady(account)
+      await supabase
+        .from('profiles')
+        .update({
+          stripe_onboarding_complete: ready,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', uid)
+      return json({ stripe_onboarding_complete: ready }, 200)
+    }
 
     if (intent === 'express_dashboard') {
       if (!accountId) {
@@ -124,8 +165,10 @@ serve(async (req) => {
     })
 
     return json({ url: accountLink.url }, 200)
-  } catch (e) {
-    const msg = String(e)
+  } catch (e: unknown) {
+    const { message: msg, code } = stripeThrownDetails(e)
+    const lower = msg.toLowerCase()
+
     if (
       msg.includes('STRIPE_SECRET_KEY') ||
       msg.includes('Invalid API Key') ||
@@ -133,10 +176,30 @@ serve(async (req) => {
     ) {
       return json({ error: 'Stripe is not configured. Set STRIPE_SECRET_KEY in Edge Function secrets.' }, 503)
     }
+
     if (
-      msg.includes('signed up for Connect') ||
-      msg.toLowerCase().includes('you can only create new accounts') && msg.toLowerCase().includes('connect')
+      lower.includes('rk_live') ||
+      lower.includes('rk_test') ||
+      (lower.includes('required permissions') && lower.includes('key')) ||
+      (lower.includes('does not have access') && lower.includes('connect'))
     ) {
+      return json(
+        {
+          error:
+            'Supabase is using a Stripe key that cannot create Connect accounts. Set a standard secret key (sk_test_… or sk_live_…) with Connect access in Edge Function secrets — not a restricted key (rk_…).',
+        },
+        503
+      )
+    }
+
+    const connectNotReady =
+      code === 'platform_account_required' ||
+      lower.includes('signed up for connect') ||
+      (lower.includes('you can only create new accounts') && lower.includes('connect')) ||
+      lower.includes('only connect platforms') ||
+      (lower.includes('connect') && lower.includes('not enabled'))
+
+    if (connectNotReady) {
       return json(
         {
           error:
@@ -145,6 +208,23 @@ serve(async (req) => {
         503
       )
     }
+
+    if (
+      lower.includes('managing losses') ||
+      lower.includes('losses for connected') ||
+      lower.includes('platform-profile') ||
+      lower.includes('platform profile') ||
+      (lower.includes('responsibilities') && lower.includes('connected'))
+    ) {
+      return json(
+        {
+          error:
+            'Finish your Stripe Connect platform profile first (including loss liability for connected accounts), then retry seller setup: https://dashboard.stripe.com/settings/connect/platform-profile',
+        },
+        503
+      )
+    }
+
     return json({ error: msg }, 500)
   }
 })

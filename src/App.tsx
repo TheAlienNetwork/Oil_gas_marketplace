@@ -17,6 +17,7 @@ import CreateOrganization from '@/pages/CreateOrganization'
 import OrganizationDetail from '@/pages/OrganizationDetail'
 import RigDetail from '@/pages/RigDetail'
 import Checkout from '@/pages/Checkout'
+import NotFound from '@/pages/NotFound'
 import { useAuth } from '@/context/AuthContext'
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
@@ -134,8 +135,8 @@ export default function App() {
             </ProtectedRoute>
           }
         />
+        <Route path="*" element={<NotFound />} />
       </Route>
-      <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   )
 }

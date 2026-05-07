@@ -13,7 +13,7 @@ export default function AppPlayer() {
     if (!grantId || !user?.id) return
     supabase
       .from('purchase_grants')
-      .select('*, listings(app_bundle_path)')
+      .select('*, listings!listing_id(app_bundle_path)')
       .eq('id', grantId)
       .eq('user_id', user.id)
       .single()

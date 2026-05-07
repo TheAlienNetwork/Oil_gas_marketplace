@@ -2,7 +2,7 @@ import { Link } from 'react-router-dom'
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import type { Listing } from '@/lib/types'
-import ListingCard from '@/components/ListingCard'
+import FeaturedListingCarousel from '@/components/FeaturedListingCarousel'
 
 export default function Landing() {
   const [featured, setFeatured] = useState<Listing[]>([])
@@ -109,11 +109,7 @@ export default function Landing() {
               </Link>
             </div>
           ) : (
-            <div className="mt-12 grid gap-6 sm:grid-cols-2 lg:grid-cols-3 lg:gap-8">
-              {featured.map((listing) => (
-                <ListingCard key={listing.id} listing={listing} />
-              ))}
-            </div>
+            <FeaturedListingCarousel listings={featured} />
           )}
         </div>
       </section>

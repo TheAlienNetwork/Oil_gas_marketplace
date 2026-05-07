@@ -48,6 +48,7 @@ Copy `.env.example` to `.env` and set:
 
 - `VITE_SUPABASE_URL` – your Supabase project URL
 - `VITE_SUPABASE_ANON_KEY` – your Supabase anon/public key
+- `VITE_STRIPE_PUBLISHABLE_KEY` – Stripe **publishable** key (`pk_test_…` / `pk_live_…`) for embedded Checkout in the browser
 
 ### 4. Supabase project
 
@@ -61,7 +62,7 @@ Copy `.env.example` to `.env` and set:
 
 ### 5. Stripe (for payments — your account + Connect sellers)
 
-Money flow: buyers pay through **Stripe Checkout**; your platform keeps **`STRIPE_CONNECT_PLATFORM_FEE_PERCENT`** of each paid sale; the rest goes to the **seller’s connected account** (minus Stripe’s own processing fees).
+Money flow: buyers pay through **Stripe Checkout** (embedded in the app by default); your platform keeps **`STRIPE_CONNECT_PLATFORM_FEE_PERCENT`** of each paid sale; the rest goes to the **seller’s connected account** (minus Stripe’s own processing fees). After payment, Stripe sends buyers back to **`/purchases?session_id=…`** (set `FRONTEND_URL` so that origin is correct). Add **`VITE_STRIPE_PUBLISHABLE_KEY`** to `.env` (publishable key, same test/live mode as `STRIPE_SECRET_KEY`).
 
 #### A. Your Stripe account (platform)
 
@@ -114,6 +115,7 @@ If Stripe shows **401** from Supabase, the function is rejecting requests withou
 
 ```bash
 npx supabase functions deploy create-checkout
+npx supabase functions deploy fulfill-checkout
 npx supabase functions deploy stripe-connect-onboard
 npx supabase functions deploy stripe-webhook
 ```

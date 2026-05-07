@@ -4,6 +4,9 @@ import { requestCreateCheckout, supabase } from '@/lib/supabase'
 import { useAuth } from '@/context/AuthContext'
 import { useCart, type CartLine } from '@/context/CartContext'
 import { PLATFORM_FEE_PERCENT } from '@/lib/constants'
+import { setPendingCartClear } from '@/lib/stripeCheckoutStorage'
+import { isStripePublishableKeyConfigured } from '@/lib/stripePublishableKey'
+import StripeEmbeddedCheckoutModal from '@/components/StripeEmbeddedCheckoutModal'
 
 function groupBySeller(lines: CartLine[]) {
   const map = new Map<string, CartLine[]>()
@@ -20,18 +23,21 @@ export default function Checkout() {
   const { lines, subtotalCents, removeLine } = useCart()
   const [payError, setPayError] = useState('')
   const [payingSellerId, setPayingSellerId] = useState<string | null>(null)
+  const [checkoutClientSecret, setCheckoutClientSecret] = useState<string | null>(null)
 
   const groups = useMemo(() => groupBySeller(lines), [lines])
-
-  const removeSellerLines = (sellerId: string) => {
-    lines.filter((l) => l.sellerId === sellerId).forEach((l) => removeLine(l.listingId))
-  }
 
   const paySellerGroup = async (groupLines: CartLine[]) => {
     if (!user) return
     const listingIds = groupLines.map((l) => l.listingId)
     const sellerId = groupLines[0].sellerId
     setPayError('')
+    if (!isStripePublishableKeyConfigured()) {
+      setPayError(
+        'Embedded checkout needs VITE_STRIPE_PUBLISHABLE_KEY in .env (Stripe Dashboard → Developers → API keys → Publishable key, same test/live mode as your secret key).'
+      )
+      return
+    }
     setPayingSellerId(sellerId)
     try {
       const {
@@ -50,17 +56,21 @@ export default function Checkout() {
       } catch {
         /* use existing */
       }
-      const { url, error } = await requestCreateCheckout(token, { listingIds })
+      setPendingCartClear(listingIds)
+      const { url, clientSecret, error } = await requestCreateCheckout(token, { listingIds })
       if (error) {
         setPayError(error)
         return
       }
+      if (clientSecret) {
+        setCheckoutClientSecret(clientSecret)
+        return
+      }
       if (url) {
-        removeSellerLines(sellerId)
         window.location.href = url
         return
       }
-      setPayError('No checkout URL returned.')
+      setPayError('No checkout session returned.')
     } finally {
       setPayingSellerId(null)
     }
@@ -95,27 +105,28 @@ export default function Checkout() {
 
   return (
     <div className="mx-auto max-w-[900px] px-4 py-10 sm:px-6 lg:px-10">
-      <p className="text-[11px] font-semibold uppercase tracking-[0.3em] text-primary-400/90">Checkout</p>
-      <h1 className="mt-2 font-display text-4xl font-normal tracking-tight text-white">Review & pay</h1>
-      <p className="mt-3 text-sm text-slate-500">
-        Secure payment with Stripe Checkout. Platform fee {PLATFORM_FEE_PERCENT}% applies to each payment.
-        Multiple sellers means one Stripe payment per seller group below.
-      </p>
+      <div className="rounded-3xl border border-white/[0.09] bg-slate-950/95 p-6 shadow-[0_24px_80px_-16px_rgba(0,0,0,0.55)] ring-1 ring-white/[0.06] backdrop-blur-sm sm:p-8">
+        <p className="text-[11px] font-semibold uppercase tracking-[0.3em] text-primary-400/90">Checkout</p>
+        <h1 className="mt-2 font-display text-4xl font-normal tracking-tight text-white">Review & pay</h1>
+        <p className="mt-3 max-w-xl text-sm leading-relaxed text-slate-400">
+          Secure payment with Stripe Checkout. Platform fee {PLATFORM_FEE_PERCENT}% applies to each payment.
+          Multiple sellers means one Stripe payment per seller group below.
+        </p>
 
-      {payError && (
-        <div className="mt-6 rounded-xl bg-red-950/40 px-4 py-3 text-sm text-red-200 ring-1 ring-red-500/20">
-          {payError}
-        </div>
-      )}
+        {payError && (
+          <div className="mt-6 rounded-xl border border-red-500/25 bg-red-950/80 px-4 py-3 text-sm text-red-100 shadow-inner ring-1 ring-red-500/20">
+            {payError}
+          </div>
+        )}
 
-      <div className="mt-10 space-y-8">
+        <div className="mt-10 space-y-8">
         {groups.map(([sellerId, groupLines]) => {
           const groupTotal = groupLines.reduce((s, l) => s + l.priceCents, 0)
           const payingThisSeller = payingSellerId === sellerId
           return (
             <section
               key={sellerId}
-              className="rounded-2xl border border-white/[0.08] bg-slate-900/35 p-6 shadow-market ring-1 ring-white/[0.04] sm:p-8"
+              className="rounded-2xl border border-white/[0.1] bg-slate-900 p-6 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.04)] sm:p-8"
             >
               <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
                 <div>
@@ -164,27 +175,33 @@ export default function Checkout() {
                 className="mt-6 w-full rounded-full bg-primary-600 py-3.5 text-sm font-semibold text-white shadow-glow transition hover:bg-primary-500 disabled:opacity-50"
               >
                 {payingThisSeller
-                  ? 'Redirecting to Stripe…'
+                  ? 'Opening checkout…'
                   : `Pay ${groupLines[0].sellerName} — $${(groupTotal / 100).toFixed(2)}`}
               </button>
             </section>
           )
         })}
+        </div>
+
+        <div className="mt-8 flex items-center justify-between rounded-xl border border-white/[0.1] bg-slate-900 px-5 py-4 shadow-inner">
+          <span className="text-sm font-medium text-slate-400">Cart total (all sellers)</span>
+          <span className="text-xl font-semibold tabular-nums tracking-tight text-white">
+            ${(subtotalCents / 100).toFixed(2)}
+          </span>
+        </div>
+
+        <Link
+          to="/marketplace"
+          className="mt-6 inline-flex items-center gap-2 text-sm font-medium text-primary-400 transition hover:text-primary-300"
+        >
+          <span aria-hidden>←</span> Continue shopping
+        </Link>
       </div>
 
-      <div className="mt-8 flex items-center justify-between rounded-xl border border-white/[0.06] bg-slate-950/30 px-4 py-3">
-        <span className="text-sm text-slate-400">Cart total (all sellers)</span>
-        <span className="text-lg font-semibold tabular-nums text-white">
-          ${(subtotalCents / 100).toFixed(2)}
-        </span>
-      </div>
-
-      <Link
-        to="/marketplace"
-        className="mt-6 inline-block text-sm font-medium text-primary-400 hover:text-primary-300"
-      >
-        ← Continue shopping
-      </Link>
+      <StripeEmbeddedCheckoutModal
+        clientSecret={checkoutClientSecret}
+        onClose={() => setCheckoutClientSecret(null)}
+      />
     </div>
   )
 }

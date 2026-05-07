@@ -4,8 +4,20 @@ import { requestCreateCheckout, supabase } from '@/lib/supabase'
 import { useAuth } from '@/context/AuthContext'
 import { useCart } from '@/context/CartContext'
 import type { Listing } from '@/lib/types'
-import { CATEGORY_LABELS, LISTING_TYPES, PLATFORM_FEE_PERCENT, type Category } from '@/lib/constants'
+import {
+  CATEGORY_LABELS,
+  LISTING_TYPES,
+  PLATFORM_FEE_PERCENT,
+  SUBCATEGORY_LABELS,
+  coerceCategory,
+  coerceSubcategory,
+} from '@/lib/constants'
+import { listingGalleryFromLegacy } from '@/lib/listingGallery'
 import { HeartFilledIcon, HeartIcon, ThumbDownIcon, ThumbUpIcon } from '@/components/Icons'
+import { setPendingCartClear } from '@/lib/stripeCheckoutStorage'
+import { isStripePublishableKeyConfigured } from '@/lib/stripePublishableKey'
+import StripeEmbeddedCheckoutModal from '@/components/StripeEmbeddedCheckoutModal'
+import ListingDeliverablePreview from '@/components/ListingDeliverablePreview'
 
 export default function ListingDetail() {
   const { id } = useParams<{ id: string }>()
@@ -27,6 +39,11 @@ export default function ListingDetail() {
   const [reviewError, setReviewError] = useState('')
   const [messageError, setMessageError] = useState('')
   const [cartMessage, setCartMessage] = useState('')
+  const [checkoutClientSecret, setCheckoutClientSecret] = useState<string | null>(null)
+  const [checkoutStarting, setCheckoutStarting] = useState(false)
+  const [freeAdding, setFreeAdding] = useState(false)
+  const [galleryIndex, setGalleryIndex] = useState(0)
+  const [alreadyInLibrary, setAlreadyInLibrary] = useState(false)
 
   useEffect(() => {
     if (!id) return
@@ -40,6 +57,10 @@ export default function ListingDetail() {
         if (!error) setListing(data as Listing)
         setLoading(false)
       })
+  }, [id])
+
+  useEffect(() => {
+    setGalleryIndex(0)
   }, [id])
 
   useEffect(() => {
@@ -89,29 +110,62 @@ export default function ListingDetail() {
       .then(({ data }) => setReaction((data?.reaction as 'like' | 'dislike' | undefined) ?? null))
   }, [user?.id, id])
 
+  useEffect(() => {
+    if (!user?.id || !id) {
+      setAlreadyInLibrary(false)
+      return
+    }
+    supabase
+      .from('purchase_grants')
+      .select('id')
+      .eq('user_id', user.id)
+      .eq('listing_id', id)
+      .maybeSingle()
+      .then(({ data }) => setAlreadyInLibrary(Boolean(data)))
+  }, [user?.id, id])
+
   const handleGetFree = async () => {
     if (!user || !listing || listing.price !== 0) return
-    const { data: purchase } = await supabase
-      .from('purchases')
-      .insert({
-        buyer_id: user.id,
-        listing_id: listing.id,
-        amount_paid_cents: 0,
-        platform_fee_cents: 0,
-        seller_payout_cents: 0,
-        status: 'completed',
-      })
-      .select('id')
-      .single()
-    if (purchase) {
-      await supabase.from('purchase_grants').insert({
-        purchase_id: purchase.id,
-        listing_id: listing.id,
-        user_id: user.id,
-        download_path: listing.file_storage_path,
-        app_access_path: listing.app_bundle_path,
-      })
-      navigate('/purchases')
+    setFreeAdding(true)
+    try {
+      const { data: existingGrant } = await supabase
+        .from('purchase_grants')
+        .select('id')
+        .eq('user_id', user.id)
+        .eq('listing_id', listing.id)
+        .maybeSingle()
+      if (existingGrant) {
+        setAlreadyInLibrary(true)
+        navigate('/purchases')
+        return
+      }
+      const { data: purchase } = await supabase
+        .from('purchases')
+        .insert({
+          buyer_id: user.id,
+          listing_id: listing.id,
+          amount_paid_cents: 0,
+          platform_fee_cents: 0,
+          seller_payout_cents: 0,
+          status: 'completed',
+        })
+        .select('id')
+        .single()
+      if (purchase) {
+        const { error: grantErr } = await supabase.from('purchase_grants').insert({
+          purchase_id: purchase.id,
+          listing_id: listing.id,
+          user_id: user.id,
+          download_path: listing.file_storage_path,
+          app_access_path: listing.app_bundle_path,
+        })
+        if (grantErr?.code === '23505') {
+          setAlreadyInLibrary(true)
+        }
+        navigate('/purchases')
+      }
+    } finally {
+      setFreeAdding(false)
     }
   }
 
@@ -263,7 +317,7 @@ export default function ListingDetail() {
       return
     }
     if (listing?.price === 0) {
-      handleGetFree()
+      await handleGetFree()
       return
     }
     if (!listing) return
@@ -271,29 +325,49 @@ export default function ListingDetail() {
       setCheckoutError('You cannot purchase your own listing.')
       return
     }
+    if (!isStripePublishableKeyConfigured()) {
+      setCheckoutError(
+        'Embedded checkout needs VITE_STRIPE_PUBLISHABLE_KEY in .env (Stripe Dashboard → Developers → API keys → Publishable key, same test/live mode as your secret key).'
+      )
+      return
+    }
     setCheckoutError('')
-    const {
-      data: { session },
-    } = await supabase.auth.getSession()
-    if (!session?.access_token) {
-      setCheckoutError('Please sign in and try again.')
-      return
-    }
-    let token = session.access_token
+    setCheckoutStarting(true)
     try {
-      const { data: ref } = await supabase.auth.refreshSession({
-        refresh_token: session.refresh_token,
-      })
-      if (ref.session?.access_token) token = ref.session.access_token
-    } catch {
-      /* use existing */
+      const {
+        data: { session },
+      } = await supabase.auth.getSession()
+      if (!session?.access_token) {
+        setCheckoutError('Please sign in and try again.')
+        return
+      }
+      let token = session.access_token
+      try {
+        const { data: ref } = await supabase.auth.refreshSession({
+          refresh_token: session.refresh_token,
+        })
+        if (ref.session?.access_token) token = ref.session.access_token
+      } catch {
+        /* use existing */
+      }
+      setPendingCartClear([listing.id])
+      const { url, clientSecret, error } = await requestCreateCheckout(token, { listingId: listing.id })
+      if (error) {
+        setCheckoutError(error)
+        return
+      }
+      if (clientSecret) {
+        setCheckoutClientSecret(clientSecret)
+        return
+      }
+      if (url) {
+        window.location.href = url
+        return
+      }
+      setCheckoutError('No checkout session returned.')
+    } finally {
+      setCheckoutStarting(false)
     }
-    const { url, error } = await requestCreateCheckout(token, { listingId: listing.id })
-    if (error) {
-      setCheckoutError(error)
-      return
-    }
-    if (url) window.location.href = url
   }
 
   if (loading) {
@@ -318,8 +392,10 @@ export default function ListingDetail() {
     )
   }
 
-  const categoryLabel =
-    CATEGORY_LABELS[listing.category as Category] || listing.category
+  const categoryLabel = CATEGORY_LABELS[coerceCategory(listing.category)]
+  const subcategoryKey = coerceSubcategory(listing.subcategory ?? undefined)
+  const subcategoryLabel =
+    subcategoryKey !== 'general' ? SUBCATEGORY_LABELS[subcategoryKey] : null
   const isSub = (listing as Listing & { is_subscription?: boolean }).is_subscription
   const pricePerMonth = (listing as Listing & { price_per_month_cents?: number | null }).price_per_month_cents
   const priceLabel = isSub && pricePerMonth != null
@@ -331,6 +407,9 @@ export default function ListingDetail() {
   const chip =
     'inline-flex items-center gap-2 rounded-full border border-white/[0.08] bg-white/[0.04] px-3 py-1.5 text-xs font-medium text-slate-300 transition hover:bg-white/[0.07] hover:text-white'
 
+  const gallery = listing ? listingGalleryFromLegacy(listing) : []
+  const activeMedia = gallery[galleryIndex]
+
   return (
     <div className="mx-auto max-w-[1400px] px-4 pb-16 pt-8 sm:px-6 lg:px-10 lg:pt-10">
       <nav className="flex flex-wrap items-center gap-2 text-xs font-medium text-slate-500">
@@ -340,37 +419,69 @@ export default function ListingDetail() {
         <span aria-hidden className="text-slate-700">
           /
         </span>
-        <span className="text-slate-400">{categoryLabel}</span>
+        <span className="text-slate-400">
+          {categoryLabel}
+          {subcategoryLabel ? (
+            <>
+              {' '}
+              · <span className="text-primary-400/90">{subcategoryLabel}</span>
+            </>
+          ) : null}
+        </span>
       </nav>
 
       <div className="mt-6 grid gap-10 lg:grid-cols-[minmax(0,1.15fr)_minmax(320px,0.85fr)] lg:gap-12 lg:items-start">
         <div className="space-y-6">
           <div className="overflow-hidden rounded-2xl bg-slate-900 ring-1 ring-white/[0.07] shadow-market">
-            {listing.thumbnail_url ? (
-              <img
-                src={listing.thumbnail_url}
-                alt=""
-                className="aspect-video w-full object-cover"
-              />
-            ) : (
+            {gallery.length === 0 ? (
               <div className="flex aspect-video flex-col items-center justify-center gap-2 bg-gradient-to-br from-slate-800 to-slate-900 text-slate-600">
                 <span className="font-display text-4xl text-slate-700">◆</span>
-                <span className="text-xs uppercase tracking-widest">No preview image</span>
+                <span className="text-xs uppercase tracking-widest">No preview yet</span>
               </div>
+            ) : (
+              <>
+                <div className="aspect-video w-full bg-black">
+                  {activeMedia?.kind === 'video' ? (
+                    <video
+                      key={activeMedia.url}
+                      src={activeMedia.url}
+                      controls
+                      className="h-full w-full object-contain"
+                    />
+                  ) : (
+                    <img src={activeMedia?.url} alt="" className="h-full w-full object-cover" />
+                  )}
+                </div>
+                {gallery.length > 1 && (
+                  <div className="flex gap-2 overflow-x-auto border-t border-white/[0.06] bg-slate-950 p-3">
+                    {gallery.map((item, i) => (
+                      <button
+                        key={`${item.url}-${i}`}
+                        type="button"
+                        onClick={() => setGalleryIndex(i)}
+                        className={`relative h-14 w-20 shrink-0 overflow-hidden rounded-lg ring-2 transition ${
+                          i === galleryIndex ? 'ring-primary-500' : 'ring-white/10 hover:ring-white/25'
+                        }`}
+                      >
+                        {item.kind === 'video' ? (
+                          <video src={item.url} className="h-full w-full object-cover" muted playsInline />
+                        ) : (
+                          <img src={item.url} alt="" className="h-full w-full object-cover" />
+                        )}
+                        {item.kind === 'video' && (
+                          <span className="absolute inset-0 flex items-center justify-center bg-black/35 text-[10px] font-bold text-white">
+                            ▶
+                          </span>
+                        )}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </>
             )}
           </div>
-          {(listing as Listing & { demo_video_url?: string | null }).demo_video_url && (
-            <div className="rounded-2xl border border-white/[0.07] bg-slate-900/40 p-5 ring-1 ring-white/[0.04]">
-              <p className="mb-3 text-[11px] font-semibold uppercase tracking-widest text-primary-400/90">
-                Walkthrough
-              </p>
-              <video
-                src={(listing as Listing & { demo_video_url?: string | null }).demo_video_url!}
-                controls
-                className="aspect-video w-full rounded-xl bg-black ring-1 ring-white/10"
-              />
-            </div>
-          )}
+
+          <ListingDeliverablePreview listing={listing} />
         </div>
 
         <div className="lg:sticky lg:top-24">
@@ -379,6 +490,11 @@ export default function ListingDetail() {
               <span className="rounded-full bg-primary-500/15 px-3 py-1 text-[11px] font-semibold uppercase tracking-wider text-primary-300">
                 {categoryLabel}
               </span>
+              {subcategoryLabel && (
+                <span className="rounded-full border border-white/[0.1] bg-white/[0.06] px-3 py-1 text-[11px] font-semibold uppercase tracking-wider text-slate-200">
+                  {subcategoryLabel}
+                </span>
+              )}
               {isSub && (
                 <span className="rounded-full border border-primary-500/30 px-3 py-1 text-[11px] font-semibold uppercase tracking-wider text-primary-400">
                   Subscription
@@ -478,29 +594,41 @@ export default function ListingDetail() {
 
             <div className="mt-8 space-y-3">
               {listing.price === 0 ? (
-                <button
-                  type="button"
-                  onClick={handleBuy}
-                  className="w-full rounded-full bg-primary-600 py-3.5 text-sm font-semibold text-white shadow-glow transition hover:bg-primary-500"
-                >
-                  Add to library — free
-                </button>
+                alreadyInLibrary ? (
+                  <Link
+                    to="/purchases"
+                    className="flex w-full items-center justify-center rounded-full border border-white/[0.12] bg-white/[0.04] py-3.5 text-sm font-semibold text-white ring-1 ring-white/[0.06] transition hover:bg-white/[0.08]"
+                  >
+                    View in library
+                  </Link>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={handleBuy}
+                    disabled={checkoutStarting || freeAdding}
+                    className="w-full rounded-full bg-primary-600 py-3.5 text-sm font-semibold text-white shadow-glow transition hover:bg-primary-500 disabled:opacity-50"
+                  >
+                    {freeAdding ? 'Adding…' : 'Add to library — free'}
+                  </button>
+                )
               ) : isSub ? (
                 <button
                   type="button"
                   onClick={handleBuy}
-                  className="w-full rounded-full bg-primary-600 py-3.5 text-sm font-semibold text-white shadow-glow transition hover:bg-primary-500"
+                  disabled={checkoutStarting}
+                  className="w-full rounded-full bg-primary-600 py-3.5 text-sm font-semibold text-white shadow-glow transition hover:bg-primary-500 disabled:opacity-50"
                 >
-                  Subscribe — {priceLabel}
+                  {checkoutStarting ? 'Opening checkout…' : `Subscribe — ${priceLabel}`}
                 </button>
               ) : (
                 <>
                   <button
                     type="button"
                     onClick={handleBuy}
-                    className="w-full rounded-full bg-primary-600 py-3.5 text-sm font-semibold text-white shadow-glow transition hover:bg-primary-500"
+                    disabled={checkoutStarting}
+                    className="w-full rounded-full bg-primary-600 py-3.5 text-sm font-semibold text-white shadow-glow transition hover:bg-primary-500 disabled:opacity-50"
                   >
-                    Buy now — {priceLabel}
+                    {checkoutStarting ? 'Opening checkout…' : `Buy now — ${priceLabel}`}
                   </button>
                   <button
                     type="button"
@@ -591,6 +719,11 @@ export default function ListingDetail() {
           </ul>
         )}
       </section>
+
+      <StripeEmbeddedCheckoutModal
+        clientSecret={checkoutClientSecret}
+        onClose={() => setCheckoutClientSecret(null)}
+      />
     </div>
   )
 }

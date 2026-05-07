@@ -25,7 +25,7 @@ export default async function handler(req: { method?: string; body?: unknown; he
 
   const body = typeof req.body === 'string' ? JSON.parse(req.body || '{}') : req.body || {}
   const grantId = body.grantId
-  const authHeader = req.headers.authorization
+  const authHeader = req.headers?.authorization
   const tokenFromHeader = authHeader?.replace(/^Bearer\s+/i, '').trim()
   const token = tokenFromHeader || body.access_token || ''
   if (!token) {

@@ -6,6 +6,7 @@ import '@mantine/core/styles.css'
 import { AuthProvider } from '@/context/AuthContext'
 import { CartProvider } from '@/context/CartContext'
 import App from './App'
+import ErrorBoundary from '@/components/ErrorBoundary'
 import './index.css'
 
 createRoot(document.getElementById('root')!).render(
@@ -38,7 +39,9 @@ createRoot(document.getElementById('root')!).render(
       >
         <AuthProvider>
           <CartProvider>
-            <App />
+            <ErrorBoundary>
+              <App />
+            </ErrorBoundary>
           </CartProvider>
         </AuthProvider>
       </BrowserRouter>

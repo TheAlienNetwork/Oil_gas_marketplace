@@ -1,4 +1,5 @@
 // Supabase Edge Function: create Stripe Checkout Session for one or more listings (same seller)
+// Default: ui_mode embedded + clientSecret for in-app Checkout. Pass embedded: false for hosted redirect URL.
 // Set env: STRIPE_SECRET_KEY, SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY,
 // STRIPE_CONNECT_PLATFORM_FEE_PERCENT (0–100, default 10), FRONTEND_URL
 
@@ -84,6 +85,7 @@ serve(async (req) => {
     const supabase = createClient(sbUrl, sbKey)
 
     const body = (await req.json().catch(() => ({}))) as Record<string, unknown>
+    const useEmbedded = body.embedded !== false && body.embedded !== 'false'
     const ids = normalizeListingIds(body)
     if (ids.length === 0) {
       return json({ error: 'Provide listingId or listingIds' }, 400)
@@ -151,6 +153,16 @@ serve(async (req) => {
 
     const session = await stripe.checkout.sessions.create({
       mode: 'payment',
+      ...(useEmbedded
+        ? {
+            ui_mode: 'embedded' as const,
+            return_url: `${appOrigin}/purchases?session_id={CHECKOUT_SESSION_ID}`,
+            redirect_on_completion: 'always' as const,
+          }
+        : {
+            success_url: `${appOrigin}/purchases?session_id={CHECKOUT_SESSION_ID}`,
+            cancel_url: ids.length > 1 ? `${appOrigin}/checkout` : `${appOrigin}/listing/${ids[0]}`,
+          }),
       metadata: {
         marketplace: 'the_patch',
         buyer_id: user.id,
@@ -178,10 +190,16 @@ serve(async (req) => {
         },
         quantity: 1,
       })),
-      success_url: `${appOrigin}/purchases?session_id={CHECKOUT_SESSION_ID}`,
-      cancel_url: ids.length > 1 ? `${appOrigin}/checkout` : `${appOrigin}/listing/${ids[0]}`,
       client_reference_id: `${user.id}:${listingIdsCsv}`,
     })
+
+    if (useEmbedded) {
+      const clientSecret = session.client_secret
+      if (!clientSecret) {
+        return json({ error: 'Stripe did not return a client secret for embedded checkout.' }, 502)
+      }
+      return json({ clientSecret }, 200)
+    }
 
     const checkoutUrl =
       session.url ?? (session.id ? `https://checkout.stripe.com/c/pay/${session.id}` : null)

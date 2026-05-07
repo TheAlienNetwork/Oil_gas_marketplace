@@ -13,24 +13,24 @@ export default function CartDropdown({ open, onClose }: CartDropdownProps) {
   if (!open) return null
 
   return (
-    <div className="absolute right-0 top-full z-[60] mt-2 w-[min(100vw-2rem,22rem)] overflow-hidden rounded-2xl border border-white/[0.08] bg-slate-900/98 shadow-market-lg backdrop-blur-xl">
-      <div className="border-b border-white/[0.06] px-4 py-3">
+    <div className="absolute right-0 top-full z-[60] mt-2 w-[min(100vw-2rem,22rem)] overflow-hidden rounded-2xl border border-white/[0.1] bg-slate-950 shadow-[0_24px_60px_-12px_rgba(0,0,0,0.65)] ring-1 ring-white/[0.06]">
+      <div className="border-b border-white/[0.08] bg-slate-950 px-4 py-3">
         <p className="text-sm font-semibold text-white">Cart</p>
         <p className="text-xs text-slate-500">
           {count === 0 ? 'Empty' : `${count} ${count === 1 ? 'item' : 'items'}`}
         </p>
       </div>
       {lines.length === 0 ? (
-        <div className="px-4 py-8 text-center text-sm text-slate-500">
+        <div className="bg-slate-950 px-4 py-8 text-center text-sm text-slate-500">
           Browse the marketplace and add paid listings here.
         </div>
       ) : (
         <>
-          <ul className="max-h-64 overflow-y-auto py-2">
+          <ul className="max-h-64 overflow-y-auto bg-slate-950 py-2">
             {lines.map((line) => (
               <li
                 key={line.listingId}
-                className="flex gap-3 px-4 py-2.5 hover:bg-white/[0.03]"
+                className="flex gap-3 px-4 py-2.5 transition hover:bg-slate-900"
               >
                 <div className="h-12 w-12 shrink-0 overflow-hidden rounded-lg bg-slate-800 ring-1 ring-white/10">
                   {line.thumbnailUrl ? (
@@ -63,7 +63,7 @@ export default function CartDropdown({ open, onClose }: CartDropdownProps) {
               </li>
             ))}
           </ul>
-          <div className="border-t border-white/[0.06] px-4 py-3">
+          <div className="border-t border-white/[0.08] bg-slate-950 px-4 py-3">
             <div className="flex items-center justify-between text-sm">
               <span className="text-slate-400">Subtotal</span>
               <span className="font-semibold tabular-nums text-white">

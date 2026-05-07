@@ -3,6 +3,8 @@ node_modules
 
 # Build
 dist
+*.tsbuildinfo
+node_modules/.tmp
 
 # Environment (contains secrets)
 .env
@@ -20,3 +22,4 @@ Thumbs.db
 # Logs
 *.log
 npm-debug.log*
+.vercel
